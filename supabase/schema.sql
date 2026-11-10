@@ -24,3 +24,8 @@ create policy "Owner can insert" on public.compass_data for insert with check (a
 create policy "Owner can update" on public.compass_data for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- No delete policy: the app never deletes your cloud copy.
+
+-- Expose the table to signed-in users through the Data API (needed on projects where
+-- new tables are not exposed automatically; harmless otherwise). Anonymous visitors get nothing.
+grant select, insert, update on public.compass_data to authenticated;
+revoke all on public.compass_data from anon;
