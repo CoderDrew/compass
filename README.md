@@ -73,12 +73,13 @@ One-time, about 10 minutes.
 3. **Configure sign-in** — *Authentication*:
    - *Sign In / Providers → Email*: enabled (default).
    - *URL Configuration*: **Site URL** `https://<user>.github.io/<repo>/`; add `http://localhost:5173/` under **Redirect URLs** for local use.
-   - *Emails → Magic Link* template: add a line with the one-time code, e.g. `<p>Your code: {{ .Token }}</p>`. Typing the code works on any device, even if the email opens in a different browser or app.
+   - Email templates can stay as they are. You sign in by opening the emailed link **in the same browser** you requested it from (on a phone, if your mail app opens links in its own built-in browser, use "Open in Safari/Chrome").
+   - Optional: with custom SMTP configured (*Authentication → Emails → SMTP Settings*), you can add `<p>Your code: {{ .Token }}</p>` to the *Magic Link* template; the app also accepts that code, which works even when the link would open in a different browser.
 4. **Copy the keys** — *Project Settings → API* (or *Connect*): the **Project URL** and the **anon / publishable** key. This key is meant to be public; row-level security is what protects your data. Never use the `service_role` / secret key in this app.
 5. **Give them to the build:**
    - GitHub: *Settings → Secrets and variables → Actions → Variables* → add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then re-run the deploy workflow.
    - Local: copy `.env.example` to `.env.local` and fill in the same values, then restart `npm run dev`.
-6. **Sign in:** open the app → *Data & settings → Cloud sync* → enter your email → type the code. Do this on your main device first (it uploads your data), then on each other device.
+6. **Sign in:** open the app → *Data & settings → Cloud sync* → enter your email → open the emailed link in the same browser. Do this on your main device first (it uploads your data), then on each other device.
 7. **Optional, recommended:** once you've signed in, turn off *Authentication → Sign In / Providers → Allow new users to sign up*, so nobody else can create an account on your project.
 
 Notes:

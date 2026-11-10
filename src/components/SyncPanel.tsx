@@ -168,7 +168,7 @@ function SignInForm() {
 
   return (
     <div className="space-y-3">
-      <p className="text-muted">Sign in to keep this portfolio in sync across your devices. No password — you get a one-time code by email.</p>
+      <p className="text-muted">Sign in to keep this portfolio in sync across your devices. No password — you get a sign-in link by email.</p>
       {!sent ? (
         <form
           className="flex flex-wrap gap-2"
@@ -179,7 +179,7 @@ function SignInForm() {
         >
           <input type="email" required autoComplete="email" placeholder="you@example.com" className="field min-w-0 flex-1 basis-56" value={email} onChange={(e) => setEmail(e.target.value)} />
           <Button type="submit" variant="primary" disabled={busy}>
-            <Mail size={15} /> Email me a code
+            <Mail size={15} /> Email me a link
           </Button>
         </form>
       ) : (
@@ -191,7 +191,7 @@ function SignInForm() {
           }}
         >
           <p className="text-xs text-muted">
-            Sent to <b>{email}</b>. Enter the code from the email, or open the email's link in this browser.
+            Sent to <b>{email}</b>. Open the link in the email <b>in this same browser</b> and you'll be signed in. If your email shows a code instead, enter it here.
           </p>
           <div className="flex flex-wrap gap-2">
             <input
