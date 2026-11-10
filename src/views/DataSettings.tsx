@@ -1,5 +1,6 @@
-import { AlertTriangle, Download, HardDrive, RotateCcw, Upload } from 'lucide-react';
+import { AlertTriangle, Cloud, Download, HardDrive, RotateCcw, Upload } from 'lucide-react';
 import { useRef } from 'react';
+import { SyncCard } from '../components/SyncPanel';
 import { Button, Card, CardHeader, PageHeader, cx } from '../components/ui';
 import { createSeedData } from '../data/seed';
 import { SCHEMA_VERSION } from '../data/types';
@@ -7,9 +8,12 @@ import { formatTimestamp, toISODate } from '../lib/dates';
 import { updateSettings } from '../lib/ops';
 import { BACKUP_KEY, backupCurrent, exportJSON, parseAppData } from '../lib/storage';
 import { useStore } from '../state/store';
+import { useSync } from '../state/sync';
 
 export function DataSettings() {
   const { data, apply, replaceData, confirm, showToast } = useStore();
+  const sync = useSync();
+  const synced = !!sync.email;
   const fileRef = useRef<HTMLInputElement>(null);
   const backupRaw = localStorage.getItem(BACKUP_KEY);
   const sizeKb = Math.round(new Blob([JSON.stringify(data)]).size / 1024);
@@ -45,6 +49,7 @@ export function DataSettings() {
           <p className="mt-2">
             This <b>replaces</b> everything currently in this browser ({data.projects.length} projects). Your current data is saved as a one-step backup you can restore below.
           </p>
+          {synced && <p className="mt-2">Because cloud sync is on, your other devices will get the imported data too.</p>}
         </>
       ),
       confirmLabel: 'Import and replace',
@@ -66,7 +71,7 @@ export function DataSettings() {
     }
     const ok = await confirm({
       title: 'Restore previous backup?',
-      body: `Swaps current data (${data.projects.length} projects) with the automatic backup (${backup.projects.length} projects). The current data becomes the new backup.`,
+      body: `Swaps current data (${data.projects.length} projects) with the automatic backup (${backup.projects.length} projects). The current data becomes the new backup.${synced ? ' Your other devices will get the restored data too.' : ''}`,
       confirmLabel: 'Restore backup',
       danger: true,
     });
@@ -81,7 +86,7 @@ export function DataSettings() {
       body: (
         <>
           All current projects, tasks, milestones, activity and weekly plans will be replaced with the initial snapshot. <b>Export a backup first</b> if you might need
-          anything. An automatic one-step backup is also kept.
+          anything. An automatic one-step backup is also kept.{synced && ' Because cloud sync is on, this also resets your other devices.'}
         </>
       ),
       confirmLabel: 'Restore seed data',
@@ -96,16 +101,31 @@ export function DataSettings() {
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Data & settings" subtitle="Backups, moving between devices, and preferences." />
 
-      <div className="mb-5 flex gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4 text-sm">
-        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-500" />
-        <div>
-          <p className="font-medium">Your data lives only in this browser.</p>
-          <p className="mt-1 text-muted">
-            It does not sync between computers, browsers, or devices, and clearing site data will erase it. Export a backup regularly (the weekly review is a good moment),
-            and use Import to move your portfolio to another device.
-          </p>
+      {synced ? (
+        <div className="mb-5 flex gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-400/[0.07] p-4 text-sm">
+          <Cloud size={18} className="mt-0.5 shrink-0 text-emerald-500" />
+          <div>
+            <p className="font-medium">Synced with your cloud account.</p>
+            <p className="mt-1 text-muted">
+              Sign in with the same email on any device to see the same portfolio. Exporting a JSON backup now and then is still a good idea.
+            </p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="mb-5 flex gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4 text-sm">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-500" />
+          <div>
+            <p className="font-medium">Your data lives only in this browser.</p>
+            <p className="mt-1 text-muted">
+              {sync.configured
+                ? 'Sign in to cloud sync below to use it on other devices. Until then it does not sync, and clearing site data will erase it.'
+                : 'It does not sync between computers, browsers, or devices, and clearing site data will erase it. Export a backup regularly (the weekly review is a good moment), and use Import to move your portfolio to another device.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <SyncCard />
 
       <Card className="mb-5">
         <CardHeader icon={<HardDrive size={15} />} title="Backup & transfer" />

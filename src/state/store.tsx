@@ -20,11 +20,30 @@ interface ConfirmOptions {
   info?: boolean;
 }
 
+export interface Choice {
+  value: string;
+  label: string;
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+}
+
+interface ChoiceOptions {
+  title: string;
+  body?: ReactNode;
+  /** Rendered left to right; the last one gets initial focus. */
+  choices: Choice[];
+}
+
+type DialogState = ChoiceOptions & { resolve: (v: string | null) => void };
+
 interface StoreValue {
   data: AppData;
   /** Apply a pure operation. Pass `toast` to show a message; `undoable` lets the user revert. */
   apply: (fn: (d: AppData) => AppData, opts?: { toast?: string; undoable?: boolean }) => void;
   replaceData: (d: AppData, toast?: string) => void;
+  /** Replace data that came from outside this tab (cloud, other tab) — not counted as a local edit. */
+  applyExternal: (d: AppData) => void;
+  /** True if `d` is the data object most recently loaded from outside (initial load, cloud, other tab). */
+  isExternal: (d: AppData) => boolean;
   filters: Filters;
   setFilters: (f: Filters | ((f: Filters) => Filters)) => void;
   today: Date;
@@ -34,7 +53,9 @@ interface StoreValue {
   showToast: (text: string, undo?: AppData) => void;
   dismissToast: () => void;
   confirm: (o: ConfirmOptions) => Promise<boolean>;
-  confirmState: (ConfirmOptions & { resolve: (v: boolean) => void }) | null;
+  /** Ask the user to pick one of several options. Resolves null if dismissed. */
+  choose: (o: ChoiceOptions) => Promise<string | null>;
+  dialog: DialogState | null;
   loadNotice: string | null;
   storageError: string | null;
 }
@@ -48,7 +69,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(initial!.data);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [toast, setToast] = useState<Toast | null>(null);
-  const [confirmState, setConfirmState] = useState<StoreValue['confirmState']>(null);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+  const lastExternal = useRef<AppData | null>(initial!.data);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [today, setToday] = useState(() => new Date());
   const skipSave = useRef(false);
@@ -79,6 +101,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const res = loadData(kv);
       if (res.source === 'stored') {
         skipSave.current = true;
+        lastExternal.current = res.data;
         setData(res.data);
       }
     };
@@ -133,18 +156,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (msg) showToast(msg);
   }, [showToast]);
 
-  const confirm = useCallback(
-    (o: ConfirmOptions) =>
-      new Promise<boolean>((resolve) =>
-        setConfirmState({
+  const applyExternal = useCallback((d: AppData) => {
+    lastExternal.current = d;
+    setData(d);
+  }, []);
+  const isExternal = useCallback((d: AppData) => d === lastExternal.current, []);
+
+  const choose = useCallback(
+    (o: ChoiceOptions) =>
+      new Promise<string | null>((resolve) =>
+        setDialog({
           ...o,
           resolve: (v) => {
-            setConfirmState(null);
+            setDialog(null);
             resolve(v);
           },
         }),
       ),
     [],
+  );
+
+  const confirm = useCallback(
+    (o: ConfirmOptions) =>
+      choose({
+        title: o.title,
+        body: o.body,
+        choices: [
+          ...(o.info ? [] : [{ value: 'cancel', label: 'Cancel', variant: 'ghost' as const }]),
+          { value: 'ok', label: o.confirmLabel ?? (o.info ? 'OK' : 'Confirm'), variant: o.danger ? ('danger' as const) : ('primary' as const) },
+        ],
+      }).then((v) => v === 'ok'),
+    [choose],
   );
 
   const currentWeek = weekStartOf(today);
@@ -154,6 +196,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     data,
     apply,
     replaceData,
+    applyExternal,
+    isExternal,
     filters,
     setFilters,
     today,
@@ -163,7 +207,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     showToast,
     dismissToast: () => setToast(null),
     confirm,
-    confirmState,
+    choose,
+    dialog,
     loadNotice,
     storageError,
   };

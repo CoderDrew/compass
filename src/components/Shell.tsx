@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { href, type View } from '../state/router';
 import { useStore } from '../state/store';
 import { updateSettings } from '../lib/ops';
+import { SyncHeaderButton, SyncStatusLine } from './SyncPanel';
 import { Button, cx, Modal } from './ui';
 
 const NAV: { view: View; label: string; icon: ReactNode; mobile?: string }[] = [
@@ -15,7 +16,7 @@ const NAV: { view: View; label: string; icon: ReactNode; mobile?: string }[] = [
 ];
 
 export function Shell({ view, children }: { view: View; children: ReactNode }) {
-  const { data, apply, toast, dismissToast, replaceData, confirmState, loadNotice, storageError } = useStore();
+  const { data, apply, toast, dismissToast, replaceData, dialog, loadNotice, storageError } = useStore();
   const theme = data.settings.theme;
   const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const active = view === 'project' ? 'portfolio' : view;
@@ -47,9 +48,7 @@ export function Shell({ view, children }: { view: View; children: ReactNode }) {
           ))}
         </nav>
         <div className="mt-auto space-y-3 px-2">
-          <p className="text-[11px] leading-relaxed text-faint">
-            Data is saved in this browser only. Use <a className="underline hover:text-muted" href={href('data')}>Export</a> to back up or move devices.
-          </p>
+          <SyncStatusLine />
           <button
             type="button"
             onClick={() => apply((d) => updateSettings(d, { theme: dark ? 'light' : 'dark' }))}
@@ -76,9 +75,7 @@ export function Shell({ view, children }: { view: View; children: ReactNode }) {
           >
             {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          <a href={href('data')} aria-label="Data & settings" className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-line/40">
-            <Database size={16} />
-          </a>
+          <SyncHeaderButton />
         </div>
       </header>
 
@@ -123,25 +120,22 @@ export function Shell({ view, children }: { view: View; children: ReactNode }) {
         </div>
       )}
 
-      {/* Confirm dialog */}
+      {/* Confirm / choice dialog */}
       <Modal
-        open={!!confirmState}
-        onClose={() => confirmState?.resolve(false)}
-        title={confirmState?.title ?? ''}
+        open={!!dialog}
+        onClose={() => dialog?.resolve(null)}
+        title={dialog?.title ?? ''}
         footer={
-          <>
-            {!confirmState?.info && (
-              <Button variant="ghost" onClick={() => confirmState?.resolve(false)}>
-                Cancel
+          <div className="flex flex-wrap justify-end gap-2">
+            {dialog?.choices.map((c, i, all) => (
+              <Button key={c.value} data-autofocus={i === all.length - 1 ? true : undefined} variant={c.variant ?? 'secondary'} onClick={() => dialog.resolve(c.value)}>
+                {c.label}
               </Button>
-            )}
-            <Button data-autofocus variant={confirmState?.danger ? 'danger' : 'primary'} onClick={() => confirmState?.resolve(true)}>
-              {confirmState?.confirmLabel ?? 'Confirm'}
-            </Button>
-          </>
+            ))}
+          </div>
         }
       >
-        <div className="text-sm text-muted">{confirmState?.body}</div>
+        <div className="text-sm text-muted">{dialog?.body}</div>
       </Modal>
     </div>
   );

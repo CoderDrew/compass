@@ -4,12 +4,15 @@ import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 import { StoreProvider } from './state/store';
+import { SyncProvider } from './state/sync';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <StoreProvider>
-        <App />
+        <SyncProvider>
+          <App />
+        </SyncProvider>
       </StoreProvider>
     </ErrorBoundary>
   </StrictMode>,
