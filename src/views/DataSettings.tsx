@@ -1,5 +1,6 @@
 import { AlertTriangle, Cloud, Download, HardDrive, RotateCcw, Upload } from 'lucide-react';
 import { useRef } from 'react';
+import { AiAccessCard } from '../components/AiAccessCard';
 import { SyncCard } from '../components/SyncPanel';
 import { Button, Card, CardHeader, PageHeader, cx } from '../components/ui';
 import { createSeedData } from '../data/seed';
@@ -126,6 +127,8 @@ export function DataSettings() {
       )}
 
       <SyncCard />
+
+      <AiAccessCard />
 
       <Card className="mb-5">
         <CardHeader icon={<HardDrive size={15} />} title="Backup & transfer" />

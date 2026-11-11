@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { AppData } from '../data/types';
 import { formatTimestamp } from '../lib/dates';
 import { CloudConflict, cloudConfigured, fetchRemote, getClient, insertRemote, updateRemote } from '../lib/cloud';
+import { updateSettings } from '../lib/ops';
 import { BACKUP_KEY, backupCurrent, parseAppData } from '../lib/storage';
 import { clearMeta, deviceLabel, isPristineSeed, planSync, readMeta, sameData, writeMeta, type RemoteRow, type SyncMeta } from '../lib/sync';
 import { useStore } from './store';
@@ -17,6 +18,7 @@ interface SyncValue {
   configured: boolean;
   status: SyncStatus;
   email: string | null;
+  userId: string | null;
   lastSyncedAt: string | null;
   error: string | null;
   sendCode: (email: string) => Promise<void>;
@@ -31,7 +33,7 @@ const PUSH_DELAY = 1500;
 const POLL_MS = 60_000;
 
 export function SyncProvider({ children }: { children: ReactNode }) {
-  const { data, applyExternal, isExternal, choose, showToast } = useStore();
+  const { data, apply, applyExternal, isExternal, choose, showToast } = useStore();
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<SyncStatus>(cloudConfigured ? 'connecting' : 'off');
   const [error, setError] = useState<string | null>(null);
@@ -283,6 +285,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, runSync]);
 
+  // Record this device's time zone once (used by AI integrations for "today"/"this week").
+  // Only when nothing is in flight, so it never manufactures a sync conflict.
+  useEffect(() => {
+    if (data.settings.timeZone || !['off', 'signed-out', 'synced'].includes(status)) return;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) apply((d) => updateSettings(d, { timeZone: tz }));
+  }, [status, data.settings.timeZone, apply]);
+
   // --- Public API -------------------------------------------------------------------------
   const sendCode = async (email: string) => {
     const c = await getClient();
@@ -312,6 +322,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     configured: cloudConfigured,
     status,
     email: session?.user.email ?? null,
+    userId,
     lastSyncedAt,
     error,
     sendCode,
