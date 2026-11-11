@@ -17,3 +17,10 @@ Nothing here runs without your explicit approval. Steps marked **you** need your
 | 7 | you | Optional hardening: turn off *Allow new users to sign up* on both projects. | Turn it back on |
 
 After step 6: ask Claude one read and one small write, and confirm "via Claude" in Activity on the live site.
+
+## Log
+
+| Date | Step | Result |
+| --- | --- | --- |
+| 2026-11-11 | 0 · URL check (staging) | Site URL `http://localhost:5173` → `/oauth/consent`; `…/compass` → `/compass/oauth/consent`; `…/compass/` → `/compass/oauth/consent` (no double slash). Production needs Authorization Path `/oauth/consent` with the existing Site URL. Test client "compass-url-check" left on staging (harmless). |
+| 2026-11-11 | 1 · Backup | Done by you |
