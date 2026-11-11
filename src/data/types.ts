@@ -152,6 +152,8 @@ export interface Settings {
   employmentHours: number;
   /** Default length of a focus block in hours. */
   blockHours: number;
+  /** IANA time zone (e.g. "America/Edmonton") used by integrations for "today" and "this week". */
+  timeZone?: string;
 }
 
 export interface AppData {

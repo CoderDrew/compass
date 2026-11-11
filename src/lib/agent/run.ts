@@ -12,6 +12,7 @@ import { parseAppData } from '../storage.ts';
 import { attributeNewEntries, deriveOpId, findPriorOp, type AgentContext } from './attribution.ts';
 import { fail, toAgentError, type AgentError } from './errors.ts';
 import { checkInvariants } from './invariants.ts';
+import { isValidTimeZone } from './time.ts';
 import { isToolName, parseToolInput, TOOLS } from './tools.ts';
 
 export interface StoredPortfolio {
@@ -45,7 +46,8 @@ export async function runTool(
   store: PortfolioStore,
   name: string,
   rawInput: unknown,
-  base: Omit<AgentContext, 'opId'>,
+  /** `timeZone` defaults to the user's `settings.timeZone`, then UTC. */
+  base: Omit<AgentContext, 'opId' | 'timeZone'> & { timeZone?: string },
   opts: RunOptions = {},
 ): Promise<RunResult> {
   let opId: string | undefined;
@@ -54,7 +56,6 @@ export async function runTool(
     const tool = TOOLS[name];
     const input = parseToolInput(name, rawInput);
     opId = tool.kind === 'write' ? deriveOpId(name, input, base.now) : undefined;
-    const ctx: AgentContext = { ...base, opId: opId ?? '' };
     const max = Math.max(1, opts.maxAttempts ?? 3);
 
     for (let attempt = 1; attempt <= max; attempt++) {
@@ -68,6 +69,9 @@ export async function runTool(
           details: [(e as Error).message],
         });
       }
+
+      const tz = [base.timeZone, data.settings.timeZone].find((z): z is string => !!z && isValidTimeZone(z)) ?? 'UTC';
+      const ctx: AgentContext = { ...base, timeZone: tz, opId: opId ?? '' };
 
       if (tool.kind === 'read') return { ok: true, result: tool.run(data, input as never, ctx), revision: row.revision };
 

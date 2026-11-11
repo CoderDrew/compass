@@ -55,6 +55,7 @@ export function validate(data: unknown): string[] {
   if (!isObj(data.weeks)) errs.push('Missing "weeks" object.');
   if (!isObj(data.settings)) errs.push('Missing "settings" object.');
   if (errs.length) return errs;
+  if (!optStr((data.settings as Record<string, unknown>).timeZone)) errs.push('Settings: "timeZone" must be text.');
 
   const ids = new Set<string>();
   (data.projects as unknown[]).forEach((p, i) => {
