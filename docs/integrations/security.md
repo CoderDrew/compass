@@ -25,7 +25,7 @@ Status: **Phase 1 proposal.** Scope: a single-user personal app. Controls are si
 - **Client registration:** Dynamic Client Registration enabled so ChatGPT can register itself (CIMD is not documented for Supabase; DCR is). To prevent random clients from being useful, the consent page shows the client name and redirect URI, and the MCP server keeps an **allowlist of approved client IDs** (`compass_ai_settings.allowed_client_ids`). A client is added only when you approve it on the Compass consent page while signed in, and removed by Disconnect. Unknown `client_id` → 403 even with a valid token. Optionally, DCR can be switched off again after ChatGPT has registered.
 - **Resource server (MCP function):** on every request it
   1. requires `Authorization: Bearer`; otherwise `401` with `WWW-Authenticate: Bearer resource_metadata="…/compass-mcp/oauth-protected-resource"` (RFC 9728, MCP 2025-11-25);
-  2. verifies signature against the project **JWKS** (asymmetric ES256/RS256 keys required; legacy HS256 rejected), `iss` = project auth issuer, `exp`, `aud` = `authenticated`;
+  2. verifies signature against the project **JWKS** (asymmetric ES256/RS256/EdDSA only; HS256 rejected), `iss` = project auth issuer, `exp`, `aud` = `authenticated` (`handler.ts`, tested with forged, expired and wrong-issuer tokens);
   3. requires a `client_id` claim (i.e. an OAuth-issued token, not a stolen browser session token) that is on the allowlist;
   4. requires the user's `ai_access_enabled` flag to be on.
 - **Token passthrough is forbidden:** the function never forwards the client's token to other services.

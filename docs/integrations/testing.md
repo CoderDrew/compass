@@ -15,7 +15,7 @@
 | Portability | Vitest import scan | 1 | Shared modules import only relative `.ts` files; no `window`, `localStorage`, `import.meta.env`, React |
 | Existing app | Vitest (existing 31 tests) + `tsc` + `vite build` + browser smoke | every phase | Nothing regresses; offline + sync unchanged |
 | SQL functions & RLS | Vitest + PGlite with Supabase roles/JWT emulated (`supabase/tests/database.test.ts`); re-checked on staging in Phase 4 | 2 | CAS atomicity, backups, op ledger, rate limit, OAuth tokens denied on `compass_data`, `anon` denied, functions not callable by `authenticated` |
-| MCP adapter | Vitest/Deno test + MCP Inspector | 3 | 401 + resource metadata, JWT checks, kill switch, allowlist, tool schemas, error mapping |
+| MCP adapter | Vitest: real MCP client ↔ handler ↔ PGlite (`supabase/tests/mcp.test.ts`); Edge Runtime itself in Phase 4 | 3 | 401 + resource metadata, JWT checks, kill switch, allowlist, tool schemas, error mapping |
 | End-to-end | ChatGPT (or other MCP client) on staging | 4 | Acceptance scenarios below |
 
 ## Phase 1 test inventory
@@ -45,9 +45,9 @@
 
 ## Acceptance criteria (Phase 4, staging)
 
-1. ChatGPT (or alternative client) connects via OAuth with PKCE; consent page shows the client; deny works.
+1. Claude (custom connector) connects via OAuth with PKCE; consent page shows the client; deny works.
 2. Still connected after the first access token expires (refresh works) — or the limitation is documented.
-3. Each example request from the brief produces the right change, visible in Compass's Activity view with "via ChatGPT" attribution:
+3. Each example request from the brief produces the right change, visible in Compass's Activity view with "via Claude" attribution:
    - "Log today's Antech accomplishments: …" → one note on Antech.
    - "Show me everything I'm working on this week." → week plan + focus projects.
    - "Mark the Voidraider playtesting task complete." → task done, completion logged; ambiguity → asks.

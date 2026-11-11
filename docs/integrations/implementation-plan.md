@@ -37,21 +37,25 @@ Notes:
 
 **Gate 2 (now):** review migrations, tests and the card. Production database still untouched.
 
-## Phase 3 — MCP server
+## Phase 3 — MCP server ✅ (this branch, not deployed)
 
-1. `supabase/functions/compass-mcp/index.ts`: `createMcpHandler`, `withOAuthProtectedResource`, JWT verification (JWKS, issuer, `client_id`, allowlist, kill switch), per-request op id, structured logging.
-2. Register the 9 tools from [mcp-tools.md](mcp-tools.md) (zod schemas generated from / checked against the Phase 1 validators), plus D3 additions if approved.
-3. OAuth consent page: `/oauth/consent` hand-off into the app (R5), approve/deny with `supabase.auth.oauth.*`.
-4. Small "via ChatGPT" label on agent-attributed activity entries (existing Activity list).
-5. Tests: tool handlers against an in-memory store; MCP Inspector smoke test locally.
+| Planned | Delivered |
+| --- | --- |
+| Edge Function | `supabase/functions/compass-mcp/`: `index.ts` (Deno entry), `handler.ts` (routing, RFC 9728 metadata at `/.well-known/oauth-protected-resource` and `/oauth-protected-resource`, 401 `WWW-Authenticate: Bearer resource_metadata=…`, JWKS verification of issuer/audience/expiry/algorithm, `client_id` required, CORS), `server.ts` (official MCP SDK `@modelcontextprotocol/server` 2.4.0, `createMcpHandler`, Streamable HTTP, stateless legacy fallback), `deno.json` import map; `supabase/config.toml` sets `verify_jwt = false` for this function only |
+| Tools | 11 tools from `src/lib/agent/mcp.ts` (schemas from the command layer, annotations: reads `readOnlyHint`, nothing destructive, closed world), server instructions (ask on ambiguity, never invent dates, milestones vs tasks, request_id) |
+| Attribution | Approved client display name stored with the approval (`client_names`) and returned by `compass_mcp_authorize`; entries show "via Claude" in Activity |
+| Consent page | `public/oauth/consent/index.html` forwarder → `#/oauth/consent` (`src/views/OAuthConsent.tsx`); survives the sign-in email round trip; warns on unknown return hosts and blocks non-HTTPS ones; approving adds the client to the allowlist and calls `approveAuthorization` |
+| Tests | `supabase/tests/mcp.test.ts`: a real MCP client over Streamable HTTP → handler → server → command layer → SQL in PGlite (metadata, challenge, forged/expired/wrong-issuer/browser tokens, tool listing + annotations, reads/writes/duplicates, structured errors, kill switch, unapproved client). `src/lib/aiAccess.test.ts` for consent rules. Consent flow and label checked in the browser against a local stand-in, and the forwarder against the production build served under `/compass/` |
 
-**Gate 3:** demo against local stack + MCP Inspector.
+Not verified yet (needs Deno/Docker or the staging project): the function running in the Supabase Edge Runtime (import map, `@ts-self-types` resolution during deploy), Supabase's real OAuth server (DCR with Claude, consent redirect URL composition, refresh tokens).
+
+**Gate 3 (now):** review. Next is Phase 4 on **compass-staging**.
 
 ## Phase 4 — Staging integration
 
-1. Staging Supabase project: enable OAuth 2.1 server + DCR, asymmetric signing keys, Site URL/Authorization Path, deploy function, apply migrations.
-2. Staging build of the app (e.g. GitHub Pages preview path or local) pointing at staging.
-3. Connect ChatGPT (if plan allows, D1) or another MCP client to staging; run the acceptance scenarios in [testing.md](testing.md): auth, refresh after 1 h, revoke, reads, writes, concurrent browser edit, conflict exhaustion, rate limit, duplicate requests, invalid data.
+1. Staging Supabase project: apply migrations, enable OAuth 2.1 server + dynamic registration, asymmetric signing keys, Site URL + Authorization Path `/oauth/consent`, deploy the function (see README → *Connect an AI assistant*).
+2. Staging build of the app (local `npm run dev` with staging `.env.local`) to sign in and approve.
+3. Connect **Claude** (custom connector) — and optionally Meta Muse — to staging; run the acceptance scenarios in [testing.md](testing.md): auth, refresh after 1 h, revoke, reads, writes, concurrent browser edit, conflict exhaustion, rate limit, duplicate requests, invalid data.
 
 **Gate 4:** you review results and approve production rollout.
 
