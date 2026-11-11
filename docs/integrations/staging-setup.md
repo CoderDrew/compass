@@ -64,11 +64,11 @@ See [testing.md](testing.md#acceptance-criteria-phase-4-staging). Results get re
 | 2026-11-11 | Scenario: "Move Ravenloft into this week's focus" (via connector) | Added once; week 2026-11-09 computed in Mountain time |
 | 2026-11-11 | Duplicate request (same `request_id`) | Second call `duplicate: true`, nothing written |
 
-### Still to check (needs you)
+### Manual checks (done by you, 2026-11-11) — all passed
 
-- [ ] Compass in your browser shows the Claude changes in *Activity* as "via Claude".
-- [ ] Turn **AI access off** → Claude's next request is refused (FORBIDDEN); turn it back on.
-- [ ] Still connected after the first hour (refresh token).
-- [ ] *Disconnect* in *AI assistants* → Claude must re-approve.
+- [x] Compass in your browser shows the Claude changes in *Activity* as "via Claude".
+- [x] Turning **AI access off** → Claude's next request is refused; back on → works.
+- [x] Still connected after the first hour (refresh token).
+- [x] *Disconnect* in *AI assistants* → Claude must re-approve.
 
 Observation: Claude noted that Compass's 12 h/week discretionary capacity doesn't match the 15–20 h you give the AI program. That's a setting you can change in *Data & settings* (agents can't change settings by design).

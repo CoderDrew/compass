@@ -51,7 +51,13 @@ Not verified yet (needs Deno/Docker or the staging project): the function runnin
 
 **Gate 3 (now):** review. Next is Phase 4 on **compass-staging**.
 
-## Phase 4 — Staging integration
+## Phase 4 — Staging integration ✅ (compass-staging, 2026-11-11)
+
+All acceptance checks passed with **Claude** (Claude Duet) as the client: OAuth connect + consent, reads, milestone completion, attributed notes, week focus, duplicate suppression, kill switch, refresh after one hour, disconnect. Details: [staging-setup.md](staging-setup.md).
+
+**Gate 4 (now):** approve production rollout.
+
+### Original plan
 
 1. Staging Supabase project: apply migrations, enable OAuth 2.1 server + dynamic registration, asymmetric signing keys, Site URL + Authorization Path `/oauth/consent`, deploy the function (see README → *Connect an AI assistant*).
 2. Staging build of the app (local `npm run dev` with staging `.env.local`) to sign in and approve.
