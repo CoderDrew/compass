@@ -1,9 +1,9 @@
 // Persistence, schema migration, validation, and JSON import/export.
 // All functions accept an injectable Storage so they can be unit-tested.
 
-import { createSeedData } from '../data/seed';
-import { SCHEMA_VERSION, type AppData, type Project } from '../data/types';
-import { isValidDue } from './dates';
+import { createSeedData } from '../data/seed.ts';
+import { SCHEMA_VERSION, type AppData, type Project } from '../data/types.ts';
+import { isValidDue } from './dates.ts';
 
 export const STORAGE_KEY = 'project-compass:data';
 export const BACKUP_KEY = 'project-compass:backup';
@@ -85,7 +85,10 @@ export function validate(data: unknown): string[] {
       if (!optStr(p[k])) errs.push(`${name}: "${k}" must be text.`);
   });
   (data.activity as unknown[]).forEach((a, i) => {
-    if (!isObj(a) || !isStr(a.id) || !isStr(a.at) || !isStr(a.text)) errs.push(`Activity entry #${i + 1} is invalid.`);
+    if (!isObj(a) || !isStr(a.id) || !isStr(a.at) || !isStr(a.text)) return errs.push(`Activity entry #${i + 1} is invalid.`);
+    if (!optStr(a.projectId) || !optStr(a.taskId) || !optStr(a.opId)) errs.push(`Activity entry #${i + 1} has an invalid reference.`);
+    if (a.source !== undefined && !(isObj(a.source) && a.source.type === 'agent' && isStr(a.source.agent) && optStr(a.source.clientId)))
+      errs.push(`Activity entry #${i + 1} has an invalid source.`);
   });
   return errs;
 }
