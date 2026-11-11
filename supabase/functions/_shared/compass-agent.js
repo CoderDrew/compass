@@ -1431,7 +1431,7 @@ function supabasePortfolioStore(rpc, caller) {
         p_expected: expectedRevision,
         p_data: data,
         p_op_id: meta.opId,
-        p_device: caller.agent
+        p_device: caller.agent ?? "AI assistant"
       });
       return res?.ok ? { ok: true, revision: Number(res.revision) } : { ok: false, reason: "conflict" };
     }
@@ -1455,7 +1455,8 @@ async function handleToolCall(rpc, caller, name, input, opts = {}) {
       result = { ok: false, error };
       outcome = code === "RATE_LIMITED" ? "rate_limited" : "forbidden";
     } else {
-      result = await runTool(supabasePortfolioStore(rpc, caller), name, input, { now, agent: caller.agent, clientId: caller.clientId }, { maxAttempts: opts.maxAttempts });
+      const agent = (auth.agent || caller.agent || "AI assistant").slice(0, 60);
+      result = await runTool(supabasePortfolioStore(rpc, { ...caller, agent }), name, input, { now, agent, clientId: caller.clientId }, { maxAttempts: opts.maxAttempts });
       outcome = !result.ok ? "error" : result.duplicate ? "duplicate" : "ok";
     }
   } catch {
@@ -1482,11 +1483,68 @@ function assertUuid(id) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) fail("UNAUTHORIZED", "Invalid user.");
   return id;
 }
+
+// src/lib/agent/mcp.ts
+var SERVER_INFO = { name: "compass", title: "Project Compass", version: "1.0.0" };
+var SERVER_INSTRUCTIONS = [
+  "Compass is the user's personal project portfolio. It is the source of truth; change it only through these tools.",
+  "Refer to projects, tasks and milestones by id when you have one. Names work too; if a tool reports AMBIGUOUS_REFERENCE, ask the user which candidate they mean instead of guessing.",
+  "Never invent dates. Only pass due/target dates the user stated; a month alone (YYYY-MM) is fine.",
+  "Status, priority and deadlines cannot be changed through this integration. Nothing can be deleted.",
+  'Some things users call "tasks" are milestones (e.g. a playtesting round). If update_task says a milestone matches, use complete_milestone.',
+  "Hobby projects marked lowPressure are never overdue; do not nag about them.",
+  "For write tools, pass a short unique request_id so retries are never applied twice."
+].join("\n");
+var TITLES = {
+  list_projects: "List projects",
+  get_project: "Get project",
+  get_activity: "Get activity history",
+  get_week_plan: "Get week plan",
+  add_activity: "Log note or decision",
+  create_task: "Create task",
+  update_task: "Update task",
+  update_project: "Update project",
+  update_week_plan: "Update week plan",
+  create_milestone: "Create milestone",
+  complete_milestone: "Complete milestone"
+};
+var TOOL_SPECS = Object.keys(TOOLS).map((name) => {
+  const t = TOOLS[name];
+  const read = t.kind === "read";
+  return {
+    name,
+    title: TITLES[name],
+    description: t.description,
+    inputSchema: toJsonSchema(t.input),
+    annotations: {
+      title: TITLES[name],
+      readOnlyHint: read,
+      // No tool deletes or overwrites user data; every write is additive or a scoped update.
+      destructiveHint: false,
+      // Reads are naturally idempotent; writes are via request_id / repeat detection.
+      idempotentHint: true,
+      // A private, bounded workspace — not the open web.
+      openWorldHint: false
+    }
+  };
+});
+function toCallToolResult(r) {
+  if (!r.ok) {
+    const body2 = { ok: false, error: r.error };
+    return { content: [{ type: "text", text: JSON.stringify(body2) }], structuredContent: body2, isError: true };
+  }
+  const result = r.result && typeof r.result === "object" ? r.result : { value: r.result };
+  const body = { ok: true, ...r.duplicate ? { duplicate: true } : {}, ...result };
+  return { content: [{ type: "text", text: JSON.stringify(body) }], structuredContent: body };
+}
 export {
   AgentFailure,
   DEDUPE_WINDOW_MS,
   FROZEN_PROJECT_FIELDS,
+  SERVER_INFO,
+  SERVER_INSTRUCTIONS,
   TOOLS,
+  TOOL_SPECS,
   assertUuid,
   attributeNewEntries,
   checkInvariants,
@@ -1516,6 +1574,7 @@ export {
   sourceOf,
   supabasePortfolioStore,
   toAgentError,
+  toCallToolResult,
   toJsonSchema,
   userToday
 };

@@ -23,7 +23,11 @@ async function setup() {
 
 const enableAi = (db: PGlite, user = U1, clients = [CLIENT]) =>
   as(db, 'authenticated', browser(user), (tx) =>
-    tx.query('insert into public.compass_ai_settings (user_id, ai_access_enabled, allowed_client_ids) values ($1, true, $2)', [user, clients]),
+    tx.query('insert into public.compass_ai_settings (user_id, ai_access_enabled, allowed_client_ids, client_names) values ($1, true, $2, $3::jsonb)', [
+      user,
+      clients,
+      JSON.stringify(Object.fromEntries(clients.map((c) => [c, 'Claude']))),
+    ]),
   );
 
 const row = async (db: PGlite, user = U1) =>
@@ -159,22 +163,22 @@ describe('server functions (service role)', () => {
     const auth = (client = CLIENT, kind = 'read') => rpc.rpc('compass_mcp_authorize', { p_user: U1, p_client: client, p_kind: kind }).then((r) => r.data);
     expect(await auth()).toMatchObject({ ok: false, code: 'FORBIDDEN' });
     await enableAi(db);
-    expect(await auth()).toEqual({ ok: true });
+    expect(await auth()).toEqual({ ok: true, agent: 'Claude' });
     expect(await auth('someone-else')).toMatchObject({ ok: false, code: 'FORBIDDEN' });
 
     for (let i = 0; i < 20; i++) await rpc.rpc('compass_mcp_log', { p_user: U1, p_op_id: `w${i}`, p_client: CLIENT, p_tool: 'add_activity', p_kind: 'write', p_outcome: 'ok' });
     expect(await auth(CLIENT, 'write')).toMatchObject({ ok: false, code: 'RATE_LIMITED' });
-    expect(await auth(CLIENT, 'read')).toEqual({ ok: true });
+    expect(await auth(CLIENT, 'read')).toEqual({ ok: true, agent: 'Claude' });
     for (let i = 0; i < 40; i++) await rpc.rpc('compass_mcp_log', { p_user: U1, p_op_id: `r${i}`, p_client: CLIENT, p_tool: 'list_projects', p_kind: 'read', p_outcome: 'ok' });
     expect(await auth(CLIENT, 'read')).toMatchObject({ ok: false, code: 'RATE_LIMITED' });
     // Old entries don't count.
     await db.exec(`update public.compass_mcp_ops set created_at = now() - interval '2 minutes'`);
-    expect(await auth(CLIENT, 'write')).toEqual({ ok: true });
+    expect(await auth(CLIENT, 'write')).toEqual({ ok: true, agent: 'Claude' });
   });
 });
 
 describe('data service end to end (handleToolCall → SQL)', () => {
-  const caller = { userId: U1, clientId: CLIENT, agent: 'ChatGPT' };
+  const caller = { userId: U1, clientId: CLIENT };
   const NOW = new Date('2026-11-11T15:00:00Z');
   let db: PGlite;
   beforeEach(async () => {
@@ -198,7 +202,7 @@ describe('data service end to end (handleToolCall → SQL)', () => {
     const pulled = await as(db, 'authenticated', browser(U1), (tx) => tx.query<{ data: AppData; revision: number }>('select data, revision from public.compass_data'));
     const entry = pulled.rows[0].data.activity[0];
     expect(pulled.rows[0].revision).toBe(2);
-    expect(entry).toMatchObject({ text: 'WordPress updates', projectId: 'antech', source: { type: 'agent', agent: 'ChatGPT', clientId: CLIENT } });
+    expect(entry).toMatchObject({ text: 'WordPress updates', projectId: 'antech', source: { type: 'agent', agent: 'Claude', clientId: CLIENT } });
 
     expect((await db.query('select count(*)::int as n from public.compass_backups')).rows[0]).toEqual({ n: 1 });
     const ops = await db.query('select tool, kind, outcome, revision_after::int as rev, client_id from public.compass_mcp_ops');

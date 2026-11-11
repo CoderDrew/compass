@@ -16,6 +16,8 @@ create table if not exists public.compass_ai_settings (
   user_id            uuid primary key references auth.users (id) on delete cascade,
   ai_access_enabled  boolean     not null default false,
   allowed_client_ids text[]      not null default '{}',
+  -- Display names of approved clients, {"<client_id>": "Claude"}; used for attribution.
+  client_names       jsonb       not null default '{}'::jsonb,
   updated_at         timestamptz not null default now()
 );
 
@@ -84,7 +86,7 @@ grant select on public.compass_mcp_ops to authenticated;
 -- ── Server-only functions ─────────────────────────────────────────────────
 
 -- Is this user/client allowed right now, and within rate limits?
--- Returns {"ok": true} or {"ok": false, "code": "FORBIDDEN" | "RATE_LIMITED", "retry_after": n}.
+-- Returns {"ok": true, "agent": "<display name>"} or {"ok": false, "code": "FORBIDDEN" | "RATE_LIMITED", "retry_after": n}.
 create or replace function public.compass_mcp_authorize(p_user uuid, p_client text, p_kind text)
 returns jsonb
 language plpgsql
@@ -111,7 +113,7 @@ begin
   if n_all >= 60 or (p_kind = 'write' and n_write >= 20) then
     return jsonb_build_object('ok', false, 'code', 'RATE_LIMITED', 'retry_after', 60);
   end if;
-  return jsonb_build_object('ok', true);
+  return jsonb_build_object('ok', true, 'agent', coalesce(nullif(s.client_names ->> p_client, ''), 'AI assistant'));
 end;
 $$;
 

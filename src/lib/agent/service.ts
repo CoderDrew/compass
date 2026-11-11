@@ -25,8 +25,8 @@ export interface RpcClient {
 export interface Caller {
   userId: string;
   clientId: string;
-  /** Display name for attribution, e.g. "ChatGPT". */
-  agent: string;
+  /** Display name for attribution; normally the approved client's name from compass_ai_settings. */
+  agent?: string;
 }
 
 async function call<T>(rpc: RpcClient, fn: string, args: Record<string, unknown>): Promise<T> {
@@ -49,7 +49,7 @@ export function supabasePortfolioStore(rpc: RpcClient, caller: Caller): Portfoli
         p_expected: expectedRevision,
         p_data: data,
         p_op_id: meta.opId,
-        p_device: caller.agent,
+        p_device: caller.agent ?? 'AI assistant',
       });
       return res?.ok ? { ok: true, revision: Number(res.revision) } : { ok: false, reason: 'conflict' };
     },
@@ -76,7 +76,7 @@ export async function handleToolCall(
   let outcome: Outcome;
 
   try {
-    const auth = await call<{ ok: boolean; code?: string; message?: string; retry_after?: number }>(rpc, 'compass_mcp_authorize', {
+    const auth = await call<{ ok: boolean; code?: string; message?: string; retry_after?: number; agent?: string }>(rpc, 'compass_mcp_authorize', {
       p_user: caller.userId,
       p_client: caller.clientId,
       p_kind: kind,
@@ -90,7 +90,8 @@ export async function handleToolCall(
       result = { ok: false, error };
       outcome = code === 'RATE_LIMITED' ? 'rate_limited' : 'forbidden';
     } else {
-      result = await runTool(supabasePortfolioStore(rpc, caller), name, input, { now, agent: caller.agent, clientId: caller.clientId }, { maxAttempts: opts.maxAttempts });
+      const agent = (auth.agent || caller.agent || 'AI assistant').slice(0, 60);
+      result = await runTool(supabasePortfolioStore(rpc, { ...caller, agent }), name, input, { now, agent, clientId: caller.clientId }, { maxAttempts: opts.maxAttempts });
       outcome = !result.ok ? 'error' : result.duplicate ? 'duplicate' : 'ok';
     }
   } catch {
