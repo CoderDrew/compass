@@ -46,3 +46,12 @@ Claude → *Settings → Connectors → Add custom connector* → name `Compass 
 ## 6. Acceptance scenarios
 
 See [testing.md](testing.md#acceptance-criteria-phase-4-staging). Results get recorded in implementation-plan.md (Gate 4).
+
+## Progress log
+
+| Date | Step | Result |
+| --- | --- | --- |
+| 2026-11-11 | Dashboard settings, login, `db push` | Done by you |
+| 2026-11-11 | OAuth server metadata | Live: DCR endpoint, PKCE S256, `offline_access` advertised (refresh tokens available) |
+| 2026-11-11 | Function deploy (`--use-api`) | Deployed; runs in Edge Runtime |
+| 2026-11-11 | Smoke test | Metadata 200 with staging issuer; unauthenticated → 401 + `resource_metadata` challenge; forged token → 401 `invalid_token` |
