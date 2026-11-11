@@ -1,6 +1,6 @@
 # Compass MCP tools: contracts
 
-Status: **Phase 1 proposal.** The command layer behind these tools (`src/lib/agent/`) is implemented and tested in Phase 1; the MCP wiring is Phase 3.
+Status: **Phase 1 — decisions recorded.** 11 tools (D3 approved). The command layer behind these tools (`src/lib/agent/`) is implemented and tested in Phase 1; the MCP wiring is Phase 3.
 
 ## Conventions
 
@@ -81,7 +81,13 @@ Effect: `toggleFocus` (only when the state actually changes), `addBlock`. Blocks
 Not allowed: removing or moving existing blocks (no deletion in the first release).
 Output: `{ ok, week: <get_week_plan output>, changed: string[] }`
 
-## Proposed additions (need approval — decision D3)
+### `create_milestone`
+Input: `{ project: string, title: string, target_date?: date, description?: string (≤ 4,000), request_id? }`
+Effect: `addMilestone` + activity entry "Added milestone: …" (`kind: 'milestone'`). No target date unless the user gave one; month-only (`2027-02`) allowed. Rejects a duplicate open milestone title (`NOT_ALLOWED`).
+Output: `{ ok, projectId, milestone: { id, title, done, targetDate? } }`
 
-- `create_milestone { project, title, target_date?, description?, request_id? }` — from your example "Add a new milestone to OneShotz". No target date unless you give one.
-- `complete_milestone { project, milestone, request_id? }`.
+### `complete_milestone`
+Input: `{ project: string, milestone: string, done?: boolean (default true), request_id? }`
+Effect: `updateMilestone` (sets/clears `completedAt`, logs completion); reopening logs "Reopened milestone: …". Already in the requested state → `INVALID_INPUT`.
+Output: `{ ok, projectId, milestone: { id, title, done, targetDate?, completedAt? } }`
+Note: "Mark the Voidraider playtesting task complete" refers to the milestone *Physical playtesting round*; `update_task` reports that a milestone matches, and the agent uses this tool.

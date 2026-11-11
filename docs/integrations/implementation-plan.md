@@ -65,12 +65,22 @@ Only with explicit approval:
 | Phase 4 | In staging: Authentication → OAuth Server → enable + allow dynamic registration; JWT signing keys → migrate to asymmetric; set Site URL/Authorization Path. I'll give exact steps. |
 | Phase 5 | Same in production, after exporting a backup. |
 
-## Open decisions
+## Decisions (recorded 2026-11-11)
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 | --- | --- | --- |
-| D1 | Which ChatGPT plan do you have? Write-capable custom MCP needs Business or Enterprise/Edu (web). | If Plus/Pro: build anyway (client-agnostic), test with another MCP client, decide on Business later. |
-| D2 | Allow status/priority/deadline changes in v1 tools? | No. |
-| D3 | Add `create_milestone` / `complete_milestone`? | Yes (in your examples). |
-| D4 | Store your IANA time zone in `settings.timeZone` (set once by the browser)? | Yes. |
-| D5 | Shared code for Deno: direct import vs. bundled `_shared` file? | Decide after the Phase 2 spike; bundled file is the safe fallback. |
+| D1 | ChatGPT plan | **ChatGPT Plus.** OpenAI's help center lists custom MCP servers (and write actions) only for Business and Enterprise/Edu. See "Client strategy" below. |
+| D2 | Status/priority/deadline changes in v1 tools? | **No** — tools cannot change them (enforced by schemas and invariants). |
+| D3 | Milestone tools? | **Yes** — `create_milestone` and `complete_milestone` added to the command layer (Phase 1). |
+| D4 | Time zone | **Mountain Time.** Phase 2: the browser records its IANA zone (e.g. `America/Edmonton`/`America/Denver`, or `America/Phoenix` if no daylight saving) once in `settings.timeZone`; the server uses it for "today" and "this week". |
+| D5 | Shared-code packaging for Deno | Delegated; settled by the Phase 2 spike (bundled `_shared` file is the fallback). |
+
+## Client strategy (ChatGPT Plus)
+
+The MCP server is standard (Streamable HTTP + OAuth 2.1), so it doesn't depend on which client connects. With Plus, ChatGPT itself can't connect a custom server today. Options, none of which change Phases 2–3:
+
+1. **Use another MCP client that supports remote servers with OAuth and write tools** for day-to-day use and for Phase 4 testing — for example Claude Code or another desktop/IDE agent. Verify the specific client's current plan requirements before relying on it.
+2. **Move to ChatGPT Business** when you want ChatGPT specifically (check OpenAI's current pricing and seat minimums).
+3. **Watch for OpenAI expanding custom MCP to Plus**; the server will work unchanged.
+
+Recommendation: continue with Phases 2–3; test Phase 4 with an MCP client you already have; decide on ChatGPT Business only if you want ChatGPT as the daily interface.

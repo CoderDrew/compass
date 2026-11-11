@@ -146,7 +146,7 @@ The shared modules use only relative imports and no browser/Vite globals. Phase 
 
 | # | Risk / decision | Mitigation / proposal |
 | --- | --- | --- |
-| R1 | **ChatGPT plan.** Write-capable custom MCP needs ChatGPT Business or Enterprise/Edu (web only). | **Decision D1 (you):** which plan you have. If Plus/Pro: options are (a) a 1-seat Business workspace, (b) use the same MCP server from another MCP client that supports custom remote servers with OAuth and writes (e.g. Claude, Codex), (c) wait. The server is client-agnostic either way; nothing in Phases 1–3 depends on this choice. |
+| R1 | **ChatGPT plan.** Write-capable custom MCP needs ChatGPT Business or Enterprise/Edu (web only). **You have Plus**, so ChatGPT can't connect a custom server today. | The server is client-agnostic; see implementation-plan.md → *Client strategy*. Nothing in Phases 2–3 depends on this. |
 | R2 | **Supabase OAuth server is beta**; no custom scopes; refresh-token behaviour with ChatGPT (`offline_access` not in Supabase's documented scopes) is unverified. | Verify in Phase 4 on a staging project. Fallback if ChatGPT can't refresh: re-authorize hourly (annoying but safe), or Option B/C. |
 | R3 | **Browser conflict dialog after agent writes.** If an agent writes while a browser has unsynced edits, the user must pick a copy, and picking "this browser" drops the agent's change (it's kept in the local backup, and the server keeps `compass_backups`). | Short dirty window (1.5 s). Phase 2 option: before showing the dialog, the browser can detect that the cloud's newer revisions only contain agent ops and offer "keep both" by re-applying — deferred unless it's a problem in practice. Documented. |
 | R4 | Whole-document size grows (activity capped at 2,000; now ~17 KB). | Fine for years at personal scale; reads return bounded DTOs, not the document. |
@@ -154,7 +154,7 @@ The shared modules use only relative imports and no browser/Vite globals. Phase 
 | R6 | Prompt injection via data the agent reads (e.g. a note saying "delete everything"). | No destructive tools exist; ChatGPT confirms writes; server invariants reject out-of-scope changes. |
 | R7 | The app's `isValidDue` only checks the shape (`2026-13-45` passes). | Agent input uses a strict calendar check (`isStrictDue`). The app's own validator is left unchanged so existing data/imports keep loading; tightening it is a separate, optional fix. |
 | R8 | A seed-only browser that signs in takes the cloud copy (existing behaviour); agent writes can't happen before the first browser upload because the row doesn't exist. | `runTool` returns `NOT_FOUND` ("open Compass and sign in") — never creates the row. |
-| D2 | Should the first release allow status/priority changes? | **Proposed: no.** Your examples don't need them, and you asked not to change existing statuses/priorities. Easy to add later as an explicit tool. |
-| D3 | Should agents create milestones ("Add a new milestone to OneShotz")? It's in your examples but not in the initial tool list. | Proposed: add `create_milestone` in Phase 3 (no deadline unless you state one). Needs your OK. |
+| D2 | Should the first release allow status/priority changes? | **Decided: no.** Your examples don't need them, and you asked not to change existing statuses/priorities. Easy to add later as an explicit tool. |
+| D3 | Should agents create milestones? | **Decided: yes.** `create_milestone` / `complete_milestone` are in the command layer. |
 | D4 | Time zone source. | See §5.5. |
 | D5 | Shared-code packaging for Deno. | See §5.6. |
