@@ -132,7 +132,7 @@ export function SyncCard() {
   );
 }
 
-function SignInForm() {
+export function SignInForm() {
   const sync = useSync();
   const [email, setEmail] = useState(() => localStorage.getItem('project-compass:last-email') ?? '');
   const [code, setCode] = useState('');

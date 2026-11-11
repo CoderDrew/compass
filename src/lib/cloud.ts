@@ -4,6 +4,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppData } from '../data/types';
 import type { RemoteRow } from './sync';
+import { EMPTY_AI_SETTINGS, type AiSettings } from './aiAccess';
 
 const URL = import.meta.env.VITE_SUPABASE_URL?.trim();
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
@@ -62,10 +63,7 @@ export async function updateRemote(c: SupabaseClient, userId: string, payload: A
 
 // ── AI access (MCP integration) ──────────────────────────────────────────────
 
-export interface AiSettings {
-  ai_access_enabled: boolean;
-  allowed_client_ids: string[];
-}
+export type { AiSettings } from './aiAccess';
 
 export interface ConnectedApp {
   clientId: string;
@@ -75,12 +73,13 @@ export interface ConnectedApp {
 
 /** null = the AI access tables aren't installed on this Supabase project yet. */
 export async function fetchAiSettings(c: SupabaseClient, userId: string): Promise<AiSettings | null> {
-  const { data, error } = await c.from('compass_ai_settings').select('ai_access_enabled, allowed_client_ids').eq('user_id', userId).maybeSingle();
+  const { data, error } = await c.from('compass_ai_settings').select('ai_access_enabled, allowed_client_ids, client_names').eq('user_id', userId).maybeSingle();
   if (error) {
     if (/compass_ai_settings|does not exist|schema cache/i.test(error.message) || error.code === '42P01' || error.code === 'PGRST205') return null;
     throw new Error(error.message);
   }
-  return (data as AiSettings | null) ?? { ai_access_enabled: false, allowed_client_ids: [] };
+  const row = data as Partial<AiSettings> | null;
+  return { ...EMPTY_AI_SETTINGS, ...(row ?? {}), client_names: (row?.client_names as Record<string, string> | undefined) ?? {} };
 }
 
 export async function saveAiSettings(c: SupabaseClient, userId: string, s: AiSettings): Promise<void> {

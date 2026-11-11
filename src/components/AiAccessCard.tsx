@@ -2,6 +2,7 @@ import { Bot, Globe, Unplug } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { formatTimestamp } from '../lib/dates';
 import { fetchAiSettings, getClient, listConnectedApps, revokeConnectedApp, saveAiSettings, type AiSettings, type ConnectedApp } from '../lib/cloud';
+import { removeClient } from '../lib/aiAccess';
 import { updateSettings } from '../lib/ops';
 import { useStore } from '../state/store';
 import { useSync } from '../state/sync';
@@ -85,7 +86,7 @@ export function AiAccessCard() {
     setBusy(true);
     try {
       const c = await getClient();
-      await saveAiSettings(c, userId, { ...settings, allowed_client_ids: settings.allowed_client_ids.filter((id) => id !== app.clientId) });
+      await saveAiSettings(c, userId, removeClient(settings, app.clientId));
       await revokeConnectedApp(c, app.clientId);
       showToast(`${app.name} disconnected`);
       await load();
@@ -97,7 +98,10 @@ export function AiAccessCard() {
   };
 
   // Approved clients, named from OAuth grants when available.
-  const approved: ConnectedApp[] = (settings?.allowed_client_ids ?? []).map((id) => apps.find((a) => a.clientId === id) ?? { clientId: id, name: 'Approved app' });
+  const approved: ConnectedApp[] = (settings?.allowed_client_ids ?? []).map((id) => {
+    const grant = apps.find((a) => a.clientId === id);
+    return { clientId: id, name: settings?.client_names[id] ?? grant?.name ?? 'Approved app', grantedAt: grant?.grantedAt };
+  });
   const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const tz = data.settings.timeZone;
 

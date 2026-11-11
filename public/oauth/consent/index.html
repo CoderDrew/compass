@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Project Compass</title>
+    <script>
+      // Supabase Auth sends AI-assistant approvals here (Site URL + Authorization Path).
+      // Forward to the app, which shows the approval screen.
+      // Works with or without a trailing slash: strip the /oauth/consent part of the path.
+      var app = location.pathname.replace(/\/oauth\/consent(\/index\.html|\/)?$/, '/');
+      location.replace(app + location.search);
+    </script>
+  </head>
+  <body>
+    <noscript>JavaScript is required to approve AI assistant access.</noscript>
+  </body>
+</html>
