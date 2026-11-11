@@ -55,3 +55,20 @@ See [testing.md](testing.md#acceptance-criteria-phase-4-staging). Results get re
 | 2026-11-11 | OAuth server metadata | Live: DCR endpoint, PKCE S256, `offline_access` advertised (refresh tokens available) |
 | 2026-11-11 | Function deploy (`--use-api`) | Deployed; runs in Edge Runtime |
 | 2026-11-11 | Smoke test | Metadata 200 with staging issuer; unauthenticated → 401 + `resource_metadata` challenge; forged token → 401 `invalid_token` |
+| 2026-11-11 | Tables & grants on real Supabase | All 4 tables exist; `anon` gets `42501` on every table and on `compass_mcp_read` |
+| 2026-11-11 | Claude connected (OAuth: DCR → Supabase authorize → Compass consent → Claude) | Works |
+| 2026-11-11 | Scenario: "everything I'm working on this week" | Correct portfolio summary from `list_projects`/`get_week_plan` |
+| 2026-11-11 | Scenario: "Mark the Voidraider playtesting task complete" | Claude recognised it as a milestone; `complete_milestone`; entry attributed "Claude" |
+| 2026-11-11 | Scenario: "Log today's Antech accomplishments …" | One note on Antech, attributed "Claude"; tasks correctly left open |
+| 2026-11-11 | Scenario: "What projects haven't received attention recently?" | Correct answer: staging data was seeded today, so nothing is stale yet |
+| 2026-11-11 | Scenario: "Move Ravenloft into this week's focus" (via connector) | Added once; week 2026-11-09 computed in Mountain time |
+| 2026-11-11 | Duplicate request (same `request_id`) | Second call `duplicate: true`, nothing written |
+
+### Still to check (needs you)
+
+- [ ] Compass in your browser shows the Claude changes in *Activity* as "via Claude".
+- [ ] Turn **AI access off** → Claude's next request is refused (FORBIDDEN); turn it back on.
+- [ ] Still connected after the first hour (refresh token).
+- [ ] *Disconnect* in *AI assistants* → Claude must re-approve.
+
+Observation: Claude noted that Compass's 12 h/week discretionary capacity doesn't match the 15–20 h you give the AI program. That's a setting you can change in *Data & settings* (agents can't change settings by design).
