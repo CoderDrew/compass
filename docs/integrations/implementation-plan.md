@@ -82,12 +82,14 @@ Only with explicit approval:
 | D4 | Time zone | **Mountain Time.** Phase 2: the browser records its IANA zone (e.g. `America/Edmonton`/`America/Denver`, or `America/Phoenix` if no daylight saving) once in `settings.timeZone`; the server uses it for "today" and "this week". |
 | D5 | Shared-code packaging for Deno | Delegated; settled by the Phase 2 spike (bundled `_shared` file is the fallback). |
 
-## Client strategy (ChatGPT Plus)
+## Client strategy
 
-The MCP server is standard (Streamable HTTP + OAuth 2.1), so it doesn't depend on which client connects. With Plus, ChatGPT itself can't connect a custom server today. Options, none of which change Phases 2–3:
+**Updated 2026-11-11: primary client is Claude; Meta Muse is a possible second.** ChatGPT Plus can't connect custom MCP servers, so ChatGPT is deferred.
 
-1. **Use another MCP client that supports remote servers with OAuth and write tools** for day-to-day use and for Phase 4 testing — for example Claude Code or another desktop/IDE agent. Verify the specific client's current plan requirements before relying on it.
-2. **Move to ChatGPT Business** when you want ChatGPT specifically (check OpenAI's current pricing and seat minimums).
-3. **Watch for OpenAI expanding custom MCP to Plus**; the server will work unchanged.
+| Client | Custom remote MCP | Auth fit | Status |
+| --- | --- | --- | --- |
+| **Claude** (custom connectors) | Yes — add the server URL as a custom connector; reported available on Free (1 connector), Pro, Max, Team, Enterprise ([Claude docs](https://claude.com/docs/connectors/custom/remote-mcp), [support](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)) | OAuth with dynamic client registration, or a pre-registered client id/secret under *Advanced settings*. Callback `https://claude.ai/api/mcp/auth_callback`, client name "Claude" | **Primary.** Fits the design unchanged |
+| Meta Muse | Reported (custom connectors over streamable HTTP), but third-party sources disagree on OAuth; examples use API keys in headers ([guide](https://anythingmcp.com/guides/clients/muse)) | Uncertain — if Muse only supports header keys, it would need a separate, personal-access-token path (weaker; not planned) | Secondary; verify against Meta's own docs in Phase 4 |
+| ChatGPT | Business/Enterprise/Edu only | OAuth | Deferred (Plus) |
 
-Recommendation: continue with Phases 2–3; test Phase 4 with an MCP client you already have; decide on ChatGPT Business only if you want ChatGPT as the daily interface.
+Phase 3/4 adjustments for Claude: attribution label from the OAuth client name ("Claude"); consent page shows the client name and redirect URI; optionally restrict approvals to the Claude callback URL. "Claude Duet" was not found in public docs — assumed to use the same custom-connector mechanism; confirm in Phase 4.
