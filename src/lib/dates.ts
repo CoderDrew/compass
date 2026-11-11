@@ -1,4 +1,4 @@
-import type { DueString } from '../data/types';
+import type { DueString } from '../data/types.ts';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 

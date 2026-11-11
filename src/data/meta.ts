@@ -1,4 +1,4 @@
-import type { BlockKind, CategoryId, Priority, Status, TaskStatus } from './types';
+import type { BlockKind, CategoryId, Priority, Status, TaskStatus } from './types.ts';
 
 export const CATEGORIES: { id: CategoryId; label: string; short: string }[] = [
   { id: 'employment', label: 'Employment', short: 'Work' },

@@ -3,7 +3,7 @@
 // Dates: only deadlines that were actually stated are included. "February 2027"
 // is stored month-precision (2027-02) rather than inventing a day.
 
-import { SCHEMA_VERSION, type AppData, type Milestone, type Project, type Task } from './types';
+import { SCHEMA_VERSION, type AppData, type Milestone, type Project, type Task } from './types.ts';
 
 type SeedProject = Omit<Project, 'createdAt' | 'updatedAt' | 'lastActivity' | 'tasks' | 'milestones' | 'relatedIds' | 'blockers' | 'waitingOn' | 'notes'> &
   Partial<Pick<Project, 'relatedIds' | 'blockers' | 'waitingOn' | 'notes'>> & {

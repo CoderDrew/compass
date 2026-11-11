@@ -1,8 +1,8 @@
 // Pure data operations. Each takes AppData and returns a new AppData.
 // Meaningful changes append to the activity log automatically.
 
-import { statusLabel } from '../data/meta';
-import type { ActivityEntry, ActivityKind, AppData, Milestone, PlanBlock, Project, Settings, Task, WeekPlan } from '../data/types';
+import { statusLabel } from '../data/meta.ts';
+import type { ActivityEntry, ActivityKind, AppData, Milestone, PlanBlock, Project, Settings, Task, WeekPlan } from '../data/types.ts';
 
 export function uid(prefix = 'id'): string {
   const c = globalThis.crypto as Crypto | undefined;
