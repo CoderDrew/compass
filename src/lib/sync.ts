@@ -4,8 +4,8 @@
 // row per user with a `revision` counter. Each device remembers the revision it last
 // synced (`SyncMeta.revision`) and whether it has unsynced local edits (`dirty`).
 
-import type { AppData } from '../data/types';
-import type { KV } from './storage';
+import type { AppData } from '../data/types.ts';
+import type { KV } from './storage.ts';
 
 export const SYNC_META_KEY = 'project-compass:sync';
 

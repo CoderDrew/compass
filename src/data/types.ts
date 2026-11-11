@@ -89,12 +89,27 @@ export type ActivityKind =
   | 'focus'
   | 'review';
 
+/** Who made a change, when it wasn't made directly in the app. Absent = made in Compass itself. */
+export interface ActivitySource {
+  type: 'agent';
+  /** Human-readable integration name, e.g. "ChatGPT". */
+  agent: string;
+  /** OAuth client id of the integration, when known. */
+  clientId?: string;
+}
+
 export interface ActivityEntry {
   id: string;
   at: string;
   projectId?: string;
+  /** Task the entry is about, when it concerns a single task. */
+  taskId?: string;
   kind: ActivityKind;
   text: string;
+  /** Set for changes made by an external integration (optional; older data has none). */
+  source?: ActivitySource;
+  /** Stable operation id shared by all entries from one external operation (dedupe/troubleshooting). */
+  opId?: string;
 }
 
 export type BlockKind = 'fixed' | 'deadline' | 'session' | 'recurring' | 'focus';
@@ -137,6 +152,8 @@ export interface Settings {
   employmentHours: number;
   /** Default length of a focus block in hours. */
   blockHours: number;
+  /** IANA time zone (e.g. "America/Edmonton") used by integrations for "today" and "this week". */
+  timeZone?: string;
 }
 
 export interface AppData {

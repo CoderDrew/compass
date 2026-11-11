@@ -1,0 +1,7 @@
+# Supabase CLI configuration (only the settings Compass needs; everything else uses CLI defaults).
+project_id = "compass"
+
+[functions.compass-mcp]
+# The function verifies OAuth access tokens itself (handler.ts). The gateway check must be
+# off so unauthenticated discovery requests (protected-resource metadata, 401 challenge) reach it.
+verify_jwt = false

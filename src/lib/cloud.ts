@@ -4,6 +4,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppData } from '../data/types';
 import type { RemoteRow } from './sync';
+import { EMPTY_AI_SETTINGS, type AiSettings } from './aiAccess';
 
 const URL = import.meta.env.VITE_SUPABASE_URL?.trim();
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
@@ -58,4 +59,49 @@ export async function updateRemote(c: SupabaseClient, userId: string, payload: A
   if (error) throw new Error(error.message);
   if (!data) throw new CloudConflict();
   return data as RemoteRow;
+}
+
+// ── AI access (MCP integration) ──────────────────────────────────────────────
+
+export type { AiSettings } from './aiAccess';
+
+export interface ConnectedApp {
+  clientId: string;
+  name: string;
+  grantedAt?: string;
+}
+
+/** null = the AI access tables aren't installed on this Supabase project yet. */
+export async function fetchAiSettings(c: SupabaseClient, userId: string): Promise<AiSettings | null> {
+  const { data, error } = await c.from('compass_ai_settings').select('ai_access_enabled, allowed_client_ids, client_names').eq('user_id', userId).maybeSingle();
+  if (error) {
+    if (/compass_ai_settings|does not exist|schema cache/i.test(error.message) || error.code === '42P01' || error.code === 'PGRST205') return null;
+    throw new Error(error.message);
+  }
+  const row = data as Partial<AiSettings> | null;
+  return { ...EMPTY_AI_SETTINGS, ...(row ?? {}), client_names: (row?.client_names as Record<string, string> | undefined) ?? {} };
+}
+
+export async function saveAiSettings(c: SupabaseClient, userId: string, s: AiSettings): Promise<void> {
+  const { error } = await c.from('compass_ai_settings').upsert({ user_id: userId, ...s, updated_at: new Date().toISOString() });
+  if (error) throw new Error(error.message);
+}
+
+/** OAuth grants the user has given (empty if the OAuth server isn't enabled). */
+export async function listConnectedApps(c: SupabaseClient): Promise<ConnectedApp[]> {
+  try {
+    const { data, error } = await c.auth.oauth.listGrants();
+    if (error || !data) return [];
+    return data.map((g) => ({ clientId: g.client.id, name: g.client.name || 'Unnamed app', grantedAt: g.granted_at }));
+  } catch {
+    return [];
+  }
+}
+
+export async function revokeConnectedApp(c: SupabaseClient, clientId: string): Promise<void> {
+  try {
+    await c.auth.oauth.revokeGrant({ clientId });
+  } catch {
+    /* OAuth server not enabled: nothing to revoke */
+  }
 }

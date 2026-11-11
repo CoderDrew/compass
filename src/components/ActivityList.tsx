@@ -58,6 +58,7 @@ export function ActivityList({
                 <time dateTime={a.at} title={formatTimestamp(a.at)}>
                   {absolute ? formatTimestamp(a.at) : timeAgo(a.at, now)}
                 </time>
+                {a.source && <span title={a.opId ? `Operation ${a.opId}` : undefined}>via {a.source.agent}</span>}
               </div>
             </div>
             {onDelete && (

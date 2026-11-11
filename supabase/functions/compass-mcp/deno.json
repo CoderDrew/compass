@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "@modelcontextprotocol/server": "npm:@modelcontextprotocol/server@2.4.0",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.119.0",
+    "jose": "npm:jose@6.2.17"
+  }
+}

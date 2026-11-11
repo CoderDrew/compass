@@ -87,6 +87,19 @@ Notes:
 - Supabase's built-in email sender is rate-limited (a few emails per hour). You stay signed in on each device, so you rarely need a new code.
 - Free projects are **paused after about a week with no activity**; resume it from the Supabase dashboard. Your browser copies keep working meanwhile.
 
+## Connect an AI assistant (MCP) — work in progress
+
+Branch `feature/mcp-integration` adds an MCP server so an assistant such as **Claude** can read and update Compass (log progress, add tasks and milestones, plan the week). It cannot delete anything or change statuses, priorities or deadlines, and every change appears in Activity as "via <assistant>". Design: [docs/integrations/](docs/integrations/architecture.md).
+
+Setup (do it on a **staging** Supabase project first):
+
+1. **Database:** apply `supabase/migrations/` (`npx supabase link --project-ref <ref>` then `npx supabase db push`). Export a JSON backup first on production.
+2. **Auth:** *Authentication → OAuth Server*: enable it, allow dynamic client registration, set **Authorization Path** to `/oauth/consent`. *JWT signing keys*: use an asymmetric key (ES256/RS256).
+3. **Function:** `npm run build:shared && npx supabase functions deploy compass-mcp --no-verify-jwt`.
+4. **Compass:** *Data & settings → AI assistants* — turn on AI access.
+5. **Claude:** *Settings → Connectors → Add custom connector*, URL `https://<ref>.supabase.co/functions/v1/compass-mcp`. Claude sends you to Compass to approve.
+6. **Disconnect** any time from *Data & settings → AI assistants* (immediate), or turn AI access off.
+
 ## Deploying to GitHub Pages
 
 The app uses hash routing and a relative base (`base: './'`), so it works under any repository name without extra config.
@@ -127,6 +140,7 @@ Data is kept separate from presentation: views call pure functions in `lib/ops.t
 
 - Single user. Sync keeps whole copies in step; it doesn't merge simultaneous edits from two devices (you choose which copy wins).
 - Sync needs the Supabase project; without it the app is browser-only.
+- AI assistant access (branch only) needs the migrations, Supabase's OAuth server (beta) and the `compass-mcp` Edge Function.
 - No notifications, calendar sync, time tracking, AI features, or integrations.
 - Activity log keeps the most recent 2,000 entries.
 - Recurring blocks aren't auto-repeated; use **Copy last week** in the planner.

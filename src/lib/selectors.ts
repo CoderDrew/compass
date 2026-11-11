@@ -1,9 +1,9 @@
 // Derived views over AppData: progress, attention, deadlines, filtering, capacity.
 // Pure functions — `today` is always passed in so results are testable.
 
-import { PRIORITY_RANK, STATUS_RANK } from '../data/meta';
-import type { AppData, CategoryId, DueString, Priority, Project, Status, WeekPlan } from '../data/types';
-import { daysUntil, parseDue } from './dates';
+import { PRIORITY_RANK, STATUS_RANK } from '../data/meta.ts';
+import type { AppData, CategoryId, DueString, Priority, Project, Status, WeekPlan } from '../data/types.ts';
+import { daysUntil, parseDue } from './dates.ts';
 
 // ── Progress ────────────────────────────────────────────────────
 

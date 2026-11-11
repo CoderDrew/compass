@@ -3,6 +3,7 @@ import { useRoute } from './state/router';
 import { Activity } from './views/Activity';
 import { Dashboard } from './views/Dashboard';
 import { DataSettings } from './views/DataSettings';
+import { OAuthConsent } from './views/OAuthConsent';
 import { Planner } from './views/Planner';
 import { Portfolio } from './views/Portfolio';
 import { ProjectDetail } from './views/ProjectDetail';
@@ -29,6 +30,9 @@ export default function App() {
       break;
     case 'data':
       view = <DataSettings />;
+      break;
+    case 'oauth':
+      view = <OAuthConsent />;
       break;
     default:
       view = <Dashboard />;
