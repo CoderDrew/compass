@@ -4,12 +4,12 @@
 
 import { BLOCK_KINDS } from '../../data/meta.ts';
 import type { ActivityKind, AppData, BlockKind, CategoryId, DueString, Priority, Project, Status, TaskStatus, WeekPlan } from '../../data/types.ts';
-import { addBlock, addTask, completeNextAction, getProject, getWeek, logActivity, recordEntry, toggleFocus, updateProject, updateTask, updateWeek } from '../ops.ts';
+import { addBlock, addMilestone, addTask, completeNextAction, getProject, getWeek, logActivity, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask, updateWeek } from '../ops.ts';
 import { attentionReasons, isOpen, plannedHours } from '../selectors.ts';
 import type { AgentContext } from './attribution.ts';
 import { fail } from './errors.ts';
 import type { Scope } from './invariants.ts';
-import { normalize, resolveProject, resolveTask } from './resolve.ts';
+import { normalize, resolveMilestone, resolveProject, resolveTask } from './resolve.ts';
 import { parseInput, type Schema } from './schema.ts';
 import { currentWeekStart, daysBetween, localDateIn, userToday } from './time.ts';
 
@@ -438,7 +438,59 @@ const update_week_plan: WriteTool<UpdateWeekInput> = {
   },
 };
 
-export const TOOLS = { list_projects, get_project, get_activity, get_week_plan, add_activity, create_task, update_task, update_project, update_week_plan } as const;
+const milestoneDto = (m: { id: string; title: string; done: boolean; targetDate?: string; completedAt?: string }) => ({
+  id: m.id,
+  title: m.title,
+  done: m.done,
+  ...(m.targetDate ? { targetDate: m.targetDate } : {}),
+  ...(m.completedAt ? { completedAt: m.completedAt } : {}),
+});
+
+const create_milestone: WriteTool<{ project: string; title: string; target_date?: DueString; description?: string }> = {
+  kind: 'write',
+  description: 'Add a milestone to a project. Only set a target date the user actually gave (a month like 2027-02 is fine).',
+  input: {
+    project: { type: 'string', min: 1, max: TITLE, description: 'Project id or name.' },
+    title: { type: 'string', min: 1, max: TITLE },
+    target_date: { type: 'due', optional: true },
+    description: { type: 'string', min: 1, max: TEXT, optional: true },
+    request_id: REQUEST_ID,
+  },
+  run(d, i, ctx) {
+    const p = resolveProject(d, i.project);
+    const dup = p.milestones.find((m) => !m.done && normalize(m.title) === normalize(i.title));
+    if (dup) fail('NOT_ALLOWED', `${p.name} already has an open milestone "${dup.title}".`, { candidates: [{ id: dup.id, name: dup.title }] });
+    let data = addMilestone(d, p.id, { title: i.title, ...(i.target_date ? { targetDate: i.target_date } : {}), ...(i.description ? { description: i.description } : {}) }, ctx.now);
+    const list = getProject(data, p.id)!.milestones;
+    const m = list[list.length - 1];
+    data = logActivity(data, { projectId: p.id, kind: 'milestone', text: `Added milestone: ${clip(m.title, 80)}` }, ctx.now);
+    return { data, scope: { projectId: p.id }, changed: ['milestone'], result: { projectId: p.id, milestone: milestoneDto(m) } };
+  },
+};
+
+const complete_milestone: WriteTool<{ project: string; milestone: string; done?: boolean }> = {
+  kind: 'write',
+  description: 'Mark a project milestone complete (or done=false to reopen it).',
+  input: {
+    project: { type: 'string', min: 1, max: TITLE, description: 'Project id or name.' },
+    milestone: { type: 'string', min: 1, max: TITLE, description: 'Milestone id or title.' },
+    done: { type: 'boolean', optional: true, description: 'Default true.' },
+    request_id: REQUEST_ID,
+  },
+  run(d, i, ctx) {
+    const p = resolveProject(d, i.project);
+    const m = resolveMilestone(p, i.milestone);
+    const done = i.done ?? true;
+    if (m.done === done) fail('INVALID_INPUT', `"${m.title}" is already ${done ? 'complete' : 'open'}.`);
+    // updateMilestone logs completion; log reopening explicitly.
+    let data = updateMilestone(d, p.id, m.id, { done }, ctx.now);
+    if (!done) data = logActivity(data, { projectId: p.id, kind: 'milestone', text: `Reopened milestone: ${clip(m.title, 80)}` }, ctx.now);
+    const after = getProject(data, p.id)!.milestones.find((x) => x.id === m.id)!;
+    return { data, scope: { projectId: p.id }, changed: [done ? 'completed' : 'reopened'], result: { projectId: p.id, milestone: milestoneDto(after) } };
+  },
+};
+
+export const TOOLS = { list_projects, get_project, get_activity, get_week_plan, add_activity, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone } as const;
 
 export type ToolName = keyof typeof TOOLS;
 

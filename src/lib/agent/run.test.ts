@@ -108,6 +108,32 @@ describe('runTool — writes', () => {
     expect(getWeek(dataOf(store), '2026-11-09').focusProjectIds).toEqual(['ravenloft']);
   });
 
+  it('create_milestone adds an attributed milestone without inventing a date', async () => {
+    const store = memoryPortfolioStore(seed());
+    const r = await runTool(store, 'create_milestone', { project: 'OneShotz', title: 'Vendor portal beta' }, base());
+    expect(r.ok).toBe(true);
+    const m = getProject(dataOf(store), 'oneshotz')!.milestones.find((x) => x.title === 'Vendor portal beta')!;
+    expect(m).toMatchObject({ done: false });
+    expect(m.targetDate).toBeUndefined();
+    expect(dataOf(store).activity[0]).toMatchObject({ kind: 'milestone', text: 'Added milestone: Vendor portal beta', source: { agent: 'ChatGPT' } });
+    expect(await runTool(store, 'create_milestone', { project: 'oneshotz', title: 'vendor portal beta', request_id: 'x' }, base())).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } });
+    expect(await runTool(store, 'create_milestone', { project: 'oneshotz', title: 'Launch', target_date: '2027-02' }, base())).toMatchObject({ ok: true });
+  });
+
+  it('complete_milestone handles "the Voidraider playtesting" request', async () => {
+    const store = memoryPortfolioStore(seed());
+    const r = await runTool(store, 'complete_milestone', { project: 'Voidraider', milestone: 'playtesting' }, base());
+    expect(r.ok).toBe(true);
+    const m = getProject(dataOf(store), 'voidraider')!.milestones.find((x) => x.title === 'Physical playtesting round')!;
+    expect(m.done).toBe(true);
+    expect(m.completedAt).toBe(NOW.toISOString());
+    expect(dataOf(store).activity[0]).toMatchObject({ kind: 'milestone', text: 'Completed milestone: Physical playtesting round', source: { agent: 'ChatGPT' } });
+    const again = await runTool(store, 'complete_milestone', { project: 'voidraider', milestone: m.id, request_id: 'again' }, base());
+    expect(again).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    await runTool(store, 'complete_milestone', { project: 'voidraider', milestone: m.id, done: false }, base());
+    expect(getProject(dataOf(store), 'voidraider')!.milestones.find((x) => x.id === m.id)!.completedAt).toBeUndefined();
+  });
+
   it('reports ambiguity instead of guessing', async () => {
     const store = memoryPortfolioStore(seed());
     const r = await runTool(store, 'add_activity', { project: 'Olympus', text: 'x' }, base());
