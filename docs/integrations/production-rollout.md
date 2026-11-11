@@ -24,3 +24,4 @@ After step 6: ask Claude one read and one small write, and confirm "via Claude" 
 | --- | --- | --- |
 | 2026-11-11 | 0 · URL check (staging) | Site URL `http://localhost:5173` → `/oauth/consent`; `…/compass` → `/compass/oauth/consent`; `…/compass/` → `/compass/oauth/consent` (no double slash). Production needs Authorization Path `/oauth/consent` with the existing Site URL. Test client "compass-url-check" left on staging (harmless). |
 | 2026-11-11 | 1 · Backup | Done by you |
+| 2026-11-11 | 2 · Migrations (production) | Applied by you. Verified: all 4 tables exist; `anon` denied (`42501`) on every table and on `compass_mcp_read`. Staging Site URL reverted. |
