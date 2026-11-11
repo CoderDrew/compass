@@ -128,11 +128,11 @@ Old data has none of these and stays valid; old app versions ignore them. Agent 
 
 ### 5.5 Time zone
 
-Week plans are keyed by the Monday in the **user's local time**; Edge Functions run in UTC. Tools take explicit dates where possible, and Phase 1 adds pure helpers that compute "today"/"this week" for a given IANA time zone. **Open decision D4:** where the server gets the user's zone (proposed: optional `settings.timeZone`, set once by the browser).
+Week plans are keyed by the Monday in the **user's local time**; Edge Functions run in UTC. Tools take explicit dates where possible, and Phase 1 adds pure helpers that compute "today"/"this week" for a given IANA time zone. **Decided (D4):** optional `settings.timeZone`, recorded once by the browser; the server falls back to UTC.
 
 ### 5.6 Code sharing between Vite and Deno
 
-The shared modules use only relative imports and no browser/Vite globals. Phase 1 adds a test that enforces this. **Open decision D5:** how the Edge Function consumes them — (a) import directly via relative paths if the Supabase CLI bundler accepts files outside `supabase/functions/` (to be verified in Phase 2 with `supabase functions serve`), or (b) a small `npm run build:shared` step that bundles `src/lib/agent/index.ts` with esbuild into `supabase/functions/_shared/compass-domain.js` (checked in, verified by CI to be up to date). (b) is the guaranteed fallback.
+The shared modules use only relative imports and no browser/Vite globals. Phase 1 adds a test that enforces this. **Decided in Phase 2 (D5): option (b).** Background — how the Edge Function consumes them — (a) import directly via relative paths if the Supabase CLI bundler accepts files outside `supabase/functions/` (to be verified in Phase 2 with `supabase functions serve`), or (b) a small `npm run build:shared` step that bundles `src/lib/agent/index.ts` with esbuild into `supabase/functions/_shared/compass-domain.js` (checked in, verified by CI to be up to date). (b) is the guaranteed fallback.
 
 ## 6. Dependencies
 
@@ -157,4 +157,4 @@ The shared modules use only relative imports and no browser/Vite globals. Phase 
 | D2 | Should the first release allow status/priority changes? | **Decided: no.** Your examples don't need them, and you asked not to change existing statuses/priorities. Easy to add later as an explicit tool. |
 | D3 | Should agents create milestones? | **Decided: yes.** `create_milestone` / `complete_milestone` are in the command layer. |
 | D4 | Time zone source. | See §5.5. |
-| D5 | Shared-code packaging for Deno. | See §5.6. |
+| D5 | Shared-code packaging for Deno. | **Decided:** bundled `_shared/compass-agent.js` (§5.6). Risk: the `.d.ts` re-exports `src/`; if `supabase functions deploy` type-checks and can't see `src/`, ship a generated `.d.ts` instead (Phase 3). |

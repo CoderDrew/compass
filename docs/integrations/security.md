@@ -22,7 +22,7 @@ Status: **Phase 1 proposal.** Scope: a single-user personal app. Controls are si
 ## 3. Authentication
 
 - **Authorization server:** Supabase Auth OAuth 2.1 server (beta). Authorization-code flow with **PKCE S256**, rotating refresh tokens, JWT access tokens (default 1 h).
-- **Client registration:** Dynamic Client Registration enabled so ChatGPT can register itself (CIMD is not documented for Supabase; DCR is). To prevent random clients from being useful, the consent page shows the client name and redirect URI, and the MCP server keeps an **allowlist of approved client IDs** (stored server-side, managed from the "AI access" card). Unknown `client_id` → 403 even with a valid token. Optionally, DCR can be switched off again after ChatGPT has registered.
+- **Client registration:** Dynamic Client Registration enabled so ChatGPT can register itself (CIMD is not documented for Supabase; DCR is). To prevent random clients from being useful, the consent page shows the client name and redirect URI, and the MCP server keeps an **allowlist of approved client IDs** (`compass_ai_settings.allowed_client_ids`). A client is added only when you approve it on the Compass consent page while signed in, and removed by Disconnect. Unknown `client_id` → 403 even with a valid token. Optionally, DCR can be switched off again after ChatGPT has registered.
 - **Resource server (MCP function):** on every request it
   1. requires `Authorization: Bearer`; otherwise `401` with `WWW-Authenticate: Bearer resource_metadata="…/compass-mcp/oauth-protected-resource"` (RFC 9728, MCP 2025-11-25);
   2. verifies signature against the project **JWKS** (asymmetric ES256/RS256 keys required; legacy HS256 rejected), `iss` = project auth issuer, `exp`, `aud` = `authenticated`;
@@ -52,7 +52,7 @@ The browser keeps full control (it uses the normal session path).
 | --- | --- | --- |
 | "AI access" switch off in Data & settings (`ai_access_enabled = false`) | Every MCP request rejected with 403 | Immediate |
 | Remove a client from the allowlist | That client rejected | Immediate |
-| `supabase.auth.oauth.revokeGrant(clientId)` from the "Connected apps" list | Deletes that client's refresh tokens; no new access tokens | Access token remains valid ≤ 1 h — covered by the two checks above |
+| "Disconnect" in the AI assistants card: removes the client from the allowlist **and** calls `supabase.auth.oauth.revokeGrant({ clientId })` | Deletes that client's refresh tokens; no new access tokens | Access token remains valid ≤ 1 h — covered by the two checks above |
 | Disconnect inside ChatGPT (Plugins) | ChatGPT forgets tokens | Immediate on ChatGPT's side |
 | Rotate JWT signing key (Supabase dashboard) | All tokens everywhere invalid | Emergency only; signs out browsers too |
 

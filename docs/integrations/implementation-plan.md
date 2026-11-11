@@ -17,19 +17,25 @@ Branch: `feature/mcp-integration` (never merged to `main` automatically). Each p
 
 **Gate 1 (now):** you review the documents and decide D1–D5 (see below).
 
-## Phase 2 — Secure Supabase data service
+## Phase 2 — Secure Supabase data service ✅ (this branch, not applied anywhere)
 
-Prerequisites: Gate 1 approval; a **separate staging Supabase project** (free) so production is never touched.
+| Planned | Delivered |
+| --- | --- |
+| Migrations directory + baseline | `supabase/migrations/20261111000000_baseline.sql` (= `schema.sql`, idempotent) |
+| Backups, op log, AI settings tables | `…000100_ai_access.sql`: `compass_ai_settings`, `compass_backups` (last 30), `compass_mcp_ops` (90 days), RLS on all, browser-session-only policies |
+| Server-only SQL functions | `compass_mcp_authorize` (kill switch, approved client, 60 req/min, 20 writes/min), `compass_mcp_read`, `compass_mcp_commit` (CAS + backup in one transaction, 5 MB cap), `compass_mcp_log`. `SECURITY DEFINER`, `search_path=''`, executable by `service_role` only |
+| Tighten `compass_data` RLS | `…000200_restrict_compass_data_to_direct_sessions.sql`: tokens with a `client_id` claim get nothing |
+| D5 spike | **Decided: bundled file.** `npm run build:shared` → `supabase/functions/_shared/compass-agent.js` (self-contained ESM + `.d.ts`); a test fails if it's stale |
+| Data service code | `src/lib/agent/service.ts`: `supabasePortfolioStore`, `handleToolCall` (authorize → runTool → log), no supabase-js dependency |
+| SQL tests | `supabase/tests/database.test.ts` — **PGlite** (real Postgres in-process) with Supabase's roles, default grants and `auth.uid()/auth.jwt()` emulated. Replaces the planned local Supabase stack because Docker isn't running here; Phase 4 re-verifies on the real staging project |
+| "AI access" card | `src/components/AiAccessCard.tsx` in Data & settings: kill switch, approved assistants + Disconnect (allowlist removal + `auth.oauth.revokeGrant`), "not set up" state, time zone |
+| D4 time zone | `settings.timeZone` (optional, validated); recorded once from the device when sync is idle; server falls back to UTC |
 
-1. Add Supabase CLI config (`supabase/config.toml`) and migrations directory; move `schema.sql` content into the first migration (no change to the live table).
-2. Migration: `compass_backups`, `compass_mcp_ops`, `compass_ai_settings (user_id, ai_access_enabled default false, allowed_client_ids text[])`, RLS on all.
-3. Migration: `compass_mcp_read(uid)`, `compass_mcp_commit(uid, expected_revision, data, op_id, tool, client_id, …)` — `SECURITY DEFINER`, CAS + backup (keep last 30) + op ledger + rate-limit check in one transaction; executable by `service_role` only.
-4. Migration: tighten `compass_data` RLS to `client_id IS NULL` (browser sessions only). Verify the browser still syncs.
-5. Decide D5 (shared-code packaging) with a `supabase functions serve` spike.
-6. pgTAP or SQL-script tests against the **local** Supabase stack: CAS, conflict, backup pruning, rate limit, RLS denial for OAuth-style JWTs, no `anon` access.
-7. Browser: "AI access" card in Data & settings (off by default; connected apps list with revoke via `getUserGrants`/`revokeGrant`). Small, existing design patterns.
+Notes:
+- supabase-js 2.119 names the grant APIs `auth.oauth.listGrants()` and `revokeGrant({ clientId })` (the docs page says `getUserGrants`); the code uses the library's names.
+- Clients get onto `allowed_client_ids` only through the Compass consent page (Phase 3), when you approve them.
 
-**Gate 2:** review migrations and test results. Production database still untouched.
+**Gate 2 (now):** review migrations, tests and the card. Production database still untouched.
 
 ## Phase 3 — MCP server
 
@@ -61,7 +67,8 @@ Only with explicit approval:
 | When | Action |
 | --- | --- |
 | Gate 1 | Answer D1–D5 (below). |
-| Before Phase 2 | Create a second free Supabase project, e.g. **compass-staging** (free plan allows 2 active projects). Don't enable anything yet. |
+| Before Phase 4 | Create a second free Supabase project, **compass-staging** (free plan allows 2 active projects). Don't enable anything yet. |
+| Before Phase 3 (optional) | Start Docker Desktop if you'd like me to run the Edge Function locally with the Supabase CLI. |
 | Phase 4 | In staging: Authentication → OAuth Server → enable + allow dynamic registration; JWT signing keys → migrate to asymmetric; set Site URL/Authorization Path. I'll give exact steps. |
 | Phase 5 | Same in production, after exporting a backup. |
 

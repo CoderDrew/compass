@@ -14,7 +14,7 @@
 | Commit procedure | Vitest with in-memory store that injects conflicts | 1 | CAS, rebase-and-retry preserves concurrent edits, bounded retries, no write on failure |
 | Portability | Vitest import scan | 1 | Shared modules import only relative `.ts` files; no `window`, `localStorage`, `import.meta.env`, React |
 | Existing app | Vitest (existing 31 tests) + `tsc` + `vite build` + browser smoke | every phase | Nothing regresses; offline + sync unchanged |
-| SQL functions & RLS | pgTAP / SQL scripts on local Supabase | 2 | CAS atomicity, backups, op ledger, rate limit, OAuth tokens denied on `compass_data`, `anon` denied, functions not callable by `authenticated` |
+| SQL functions & RLS | Vitest + PGlite with Supabase roles/JWT emulated (`supabase/tests/database.test.ts`); re-checked on staging in Phase 4 | 2 | CAS atomicity, backups, op ledger, rate limit, OAuth tokens denied on `compass_data`, `anon` denied, functions not callable by `authenticated` |
 | MCP adapter | Vitest/Deno test + MCP Inspector | 3 | 401 + resource metadata, JWT checks, kill switch, allowlist, tool schemas, error mapping |
 | End-to-end | ChatGPT (or other MCP client) on staging | 4 | Acceptance scenarios below |
 
@@ -30,6 +30,18 @@
 - **Idempotency:** same `opId` twice → second is `duplicate: true` and the document is unchanged; duplicate open-task title rejected.
 - **Commit procedure:** success path; one conflict then success with the concurrent edit preserved; repeated conflicts → `CONFLICT_RETRY_EXHAUSTED` with no partial write; invalid stored data → `DATA_INVALID`; duplicate detected after a rebase.
 - **Activity schema:** old entries without new fields still validate; malformed `source`/`opId` rejected.
+
+## Phase 2 test inventory
+
+`supabase/tests/database.test.ts` (17) and `supabase/tests/shared-bundle.test.ts` (3):
+- Migrations apply on a fresh project, re-run safely, and leave existing `compass_data` rows untouched.
+- RLS: browser sessions keep access to their own row only; tokens with `client_id` can't read/update/insert `compass_data`; `anon` gets nothing; AI settings only editable by the owner's browser session; backups/op log read-only.
+- Grants: `compass_mcp_*` functions not executable by `authenticated` (browser or OAuth) — only `service_role`.
+- `compass_mcp_commit`: atomic CAS, conflict on stale revision, backup of the previous document, 30-backup pruning, rejects non-object documents.
+- `compass_mcp_authorize`: off by default, approved client required, 60/min and 20 writes/min limits, old entries expire.
+- `handleToolCall` end to end: refusal is logged; attributed write visible to the browser; duplicate detection; rebase over a browser save mid-request; time zone from settings; user isolation.
+- Shared bundle is current, self-contained and runs as a module.
+- Mutation check performed: removing the RLS-tightening migration makes the OAuth test fail.
 
 ## Acceptance criteria (Phase 4, staging)
 
