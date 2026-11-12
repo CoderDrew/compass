@@ -4,7 +4,7 @@ Status: **Phase 1 — decisions recorded.** 11 tools (D3 approved). The command 
 
 ## Conventions
 
-- **References.** Every tool that targets a project accepts `project` as either a stable id (`"voidraider"`, `"p-…"`) or a name. Resolution order: exact id → exact name (case-insensitive) → unique normalised match (punctuation/space-insensitive, then "starts with", then "contains"). More than one match → `AMBIGUOUS_REFERENCE` with up to 5 candidates `{id, name}`. No match → `NOT_FOUND` with up to 3 closest names. Tasks resolve the same way **within the resolved project**.
+- **References.** Every tool that targets a project accepts `project` as either a stable id (`"starfall"`, `"p-…"`) or a name. Resolution order: exact id → exact name (case-insensitive) → unique normalised match (punctuation/space-insensitive, then "starts with", then "contains"). More than one match → `AMBIGUOUS_REFERENCE` with up to 5 candidates `{id, name}`. No match → `NOT_FOUND` with up to 3 closest names. Tasks resolve the same way **within the resolved project**.
 - **Dates.** `YYYY-MM-DD` or month-only `YYYY-MM`, validated with the app's `isValidDue`. Week starts must be a Monday (`YYYY-MM-DD`). Tools never invent a date the user didn't give.
 - **Idempotency.** Each write accepts an optional `request_id` (string ≤ 64). The server derives `opId` = `request_id` or a hash of `(tool, canonical args)` within a 10-minute window. If an activity entry with that `opId` already exists, the tool returns `{ ok: true, duplicate: true, … }` and writes nothing.
 - **Attribution.** Every write adds at least one activity entry with `source: { type: 'agent', agent, clientId }` and `opId`.
@@ -53,7 +53,7 @@ Output: `{ weekStart, focus: [{id, name}], blocks: [{ id, kind, title, projectId
 ## Write tools
 
 ### `add_activity`
-Log progress, notes or decisions ("Log today's Antech accomplishments …").
+Log progress, notes or decisions ("Log today's Starfall progress …").
 Input: `{ project?: string, kind?: 'note' | 'decision' (default 'note'), text: string (1–4,000), request_id? }`
 Effect: `recordEntry` (existing op) → touches the project's `lastActivity`.
 Output: `{ ok, entry: { id, at, kind, text, projectId? }, duplicate? }`
@@ -90,4 +90,4 @@ Output: `{ ok, projectId, milestone: { id, title, done, targetDate? } }`
 Input: `{ project: string, milestone: string, done?: boolean (default true), request_id? }`
 Effect: `updateMilestone` (sets/clears `completedAt`, logs completion); reopening logs "Reopened milestone: …". Already in the requested state → `INVALID_INPUT`.
 Output: `{ ok, projectId, milestone: { id, title, done, targetDate?, completedAt? } }`
-Note: "Mark the Voidraider playtesting task complete" refers to the milestone *Physical playtesting round*; `update_task` reports that a milestone matches, and the agent uses this tool.
+Note: "Mark the Starfall playtesting task complete" refers to the milestone *Physical playtesting round*; `update_task` reports that a milestone matches, and the agent uses this tool.

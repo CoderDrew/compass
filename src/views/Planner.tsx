@@ -111,7 +111,7 @@ export function Planner() {
               />
             </div>
             <div className="mt-3 flex items-center gap-2 text-xs text-faint">
-              <Briefcase size={13} /> Antech: {settings.employmentHours}h protected employment — tracked separately, never counted against discretionary capacity.
+              <Briefcase size={13} /> Employment: {settings.employmentHours}h protected employment — tracked separately, never counted against discretionary capacity.
             </div>
           </div>
         </Card>

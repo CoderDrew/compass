@@ -19,7 +19,7 @@ describe('shared bundle for the Edge Function (D5)', () => {
   it('works when loaded as a module', async () => {
     const mod = await import('../functions/_shared/compass-agent.js');
     const store = mod.memoryPortfolioStore(createSeedData(new Date('2026-11-01T12:00:00Z')));
-    const r = await mod.runTool(store, 'complete_milestone', { project: 'voidraider', milestone: 'playtesting' }, { now: new Date('2026-11-11T15:00:00Z'), agent: 'Test' });
+    const r = await mod.runTool(store, 'complete_milestone', { project: 'starfall', milestone: 'playtesting' }, { now: new Date('2026-11-11T15:00:00Z'), agent: 'Test' });
     expect(r).toMatchObject({ ok: true, revision: 2 });
     expect(Object.keys(mod.TOOLS)).toHaveLength(11);
   });

@@ -41,31 +41,31 @@ describe('time helpers', () => {
 describe('reference resolution', () => {
   const d = seed();
   it('prefers stable ids, case-insensitively', () => {
-    expect(resolveProject(d, 'voidraider').id).toBe('voidraider');
-    expect(resolveProject(d, 'Voidraider').id).toBe('voidraider'); // not ambiguous with "Voidraider — Terrain Photo Library"
-    expect(resolveProject(d, 'OneShotz').id).toBe('oneshotz');
+    expect(resolveProject(d, 'starfall').id).toBe('starfall');
+    expect(resolveProject(d, 'Starfall').id).toBe('starfall'); // not ambiguous with "Starfall — Terrain Photo Library"
+    expect(resolveProject(d, 'Tablebook').id).toBe('tablebook');
   });
   it('matches names loosely but only when unambiguous', () => {
-    expect(resolveProject(d, 'Ravenloft').id).toBe('ravenloft');
-    expect(resolveProject(d, 'AI career development').id).toBe('ai-career-dev');
-    expect(resolveProject(d, 'my AI career development project').id).toBe('ai-career-dev');
-    expect(resolveProject(d, 'friday food bag').id).toBe('friday-food-bag');
+    expect(resolveProject(d, 'Lighthouse').id).toBe('lighthouse');
+    expect(resolveProject(d, 'skills development').id).toBe('skills-dev');
+    expect(resolveProject(d, 'my skills development project').id).toBe('skills-dev');
+    expect(resolveProject(d, 'community pantry').id).toBe('community-pantry');
   });
   it('reports ambiguity with candidates instead of guessing', () => {
-    const e = errorOf(() => resolveProject(d, 'Olympus'));
+    const e = errorOf(() => resolveProject(d, 'Harbor'));
     expect(e.code).toBe('AMBIGUOUS_REFERENCE');
-    expect(e.candidates?.map((c) => c.id).sort()).toEqual(['olympus-social', 'olympus-web']);
+    expect(e.candidates?.map((c) => c.id).sort()).toEqual(['harbor-social', 'harbor-web']);
   });
   it('reports not-found with suggestions', () => {
-    const e = errorOf(() => resolveProject(d, 'Olympus podcast'));
+    const e = errorOf(() => resolveProject(d, 'Harbor podcast'));
     expect(e.code).toBe('NOT_FOUND');
     expect(e.suggestions?.length).toBeGreaterThan(0);
     expect(errorOf(() => resolveProject(d, 'zzzz')).suggestions).toEqual([]);
   });
   it('resolves tasks within the project and hints when the user meant a milestone', () => {
-    const antech = resolveProject(d, 'antech');
-    expect(resolveTask(antech, 'vendor onboarding').title).toBe('Vendor Onboarding form');
-    const e = errorOf(() => resolveTask(resolveProject(d, 'voidraider'), 'playtesting'));
+    const job = resolveProject(d, 'day-job');
+    expect(resolveTask(job, 'supplier intake').title).toBe('Supplier intake form');
+    const e = errorOf(() => resolveTask(resolveProject(d, 'starfall'), 'playtesting'));
     expect(e.code).toBe('NOT_FOUND');
     expect(e.message).toContain('milestone matches: "Physical playtesting round"');
   });
@@ -74,10 +74,10 @@ describe('reference resolution', () => {
 describe('input schemas', () => {
   it('rejects unknown fields, bad dates, non-Mondays and overlong text', () => {
     const bad = (tool: keyof typeof TOOLS, input: unknown) => errorOf(() => parseInput(TOOLS[tool].input, input));
-    expect(bad('update_project', { project: 'antech', status: 'parked' }).details).toContain('status is not a recognised field');
-    expect(bad('create_task', { project: 'antech', title: 'x', due: '2026-13-01' }).code).toBe('INVALID_INPUT');
-    expect(bad('create_task', { project: 'antech', title: 'x', due: '2026-02-30' }).code).toBe('INVALID_INPUT');
-    expect(bad('create_task', { project: 'antech', title: 'x', due: '2026-13' }).code).toBe('INVALID_INPUT');
+    expect(bad('update_project', { project: 'day-job', status: 'parked' }).details).toContain('status is not a recognised field');
+    expect(bad('create_task', { project: 'day-job', title: 'x', due: '2026-13-01' }).code).toBe('INVALID_INPUT');
+    expect(bad('create_task', { project: 'day-job', title: 'x', due: '2026-02-30' }).code).toBe('INVALID_INPUT');
+    expect(bad('create_task', { project: 'day-job', title: 'x', due: '2026-13' }).code).toBe('INVALID_INPUT');
     expect(bad('get_week_plan', { week_start: '2026-11-11' }).details?.[0]).toMatch(/Monday/);
     expect(bad('add_activity', { text: 'x'.repeat(4001) }).details?.[0]).toMatch(/at most 4000/);
     expect(bad('add_activity', { text: '   ' }).details?.[0]).toMatch(/empty/);
@@ -100,38 +100,38 @@ describe('input schemas', () => {
 describe('read tools', () => {
   it('list_projects hides archived, filters focus and finds stale projects without nagging hobbies', () => {
     let d = seed();
-    d = updateProject(d, 'conspiracy-x', { status: 'archived' });
-    d = toggleFocus(d, '2026-11-09', 'ravenloft');
-    d = { ...d, projects: d.projects.map((p) => (p.id === 'drumming' || p.id === 'dcc-tools' ? { ...p, lastActivity: '2026-09-01T12:00:00Z' } : p)) };
+    d = updateProject(d, 'retro-campaign', { status: 'archived' });
+    d = toggleFocus(d, '2026-11-09', 'lighthouse');
+    d = { ...d, projects: d.projects.map((p) => (p.id === 'guitar' || p.id === 'rpg-tools' ? { ...p, lastActivity: '2026-09-01T12:00:00Z' } : p)) };
 
     const all = TOOLS.list_projects.run(d, {}, ctx()) as { projects: { id: string }[]; total: number };
-    expect(all.projects.some((p) => p.id === 'conspiracy-x')).toBe(false);
+    expect(all.projects.some((p) => p.id === 'retro-campaign')).toBe(false);
 
     const focus = TOOLS.list_projects.run(d, { focus_only: true }, ctx()) as { projects: { id: string; inFocus: boolean }[] };
-    expect(focus.projects.map((p) => p.id)).toEqual(['ravenloft']);
+    expect(focus.projects.map((p) => p.id)).toEqual(['lighthouse']);
 
     const stale = TOOLS.list_projects.run(d, { stale_days: 30 }, ctx()) as { projects: { id: string; daysSinceActivity: number; lowPressure: boolean; attention: string[] }[] };
-    expect(stale.projects.map((p) => p.id).sort()).toEqual(['dcc-tools', 'drumming']);
-    const drums = stale.projects.find((p) => p.id === 'drumming')!;
-    expect(drums.lowPressure).toBe(true);
-    expect(drums.attention).toEqual([]); // hobbies never "need attention"
+    expect(stale.projects.map((p) => p.id).sort()).toEqual(['guitar', 'rpg-tools']);
+    const guitar = stale.projects.find((p) => p.id === 'guitar')!;
+    expect(guitar.lowPressure).toBe(true);
+    expect(guitar.attention).toEqual([]); // hobbies never "need attention"
 
     const attention = TOOLS.list_projects.run(d, { needs_attention: true }, ctx()) as { projects: { id: string }[] };
-    expect(attention.projects.some((p) => p.id === 'drumming')).toBe(false);
+    expect(attention.projects.some((p) => p.id === 'guitar')).toBe(false);
   });
 
   it('get_project returns tasks, milestones and recent activity', () => {
-    const r = TOOLS.get_project.run(seed(), { project: 'Antech' }, ctx()) as { id: string; tasks: unknown[]; milestones: unknown[] };
-    expect(r.id).toBe('antech');
+    const r = TOOLS.get_project.run(seed(), { project: 'Day Job' }, ctx()) as { id: string; tasks: unknown[]; milestones: unknown[] };
+    expect(r.id).toBe('day-job');
     expect(r.tasks).toHaveLength(5);
   });
 
   it('get_activity filters by project, kind and user-local dates', () => {
     let d = seed();
-    d = updateProject(d, 'antech', { nextAction: 'Ship portal' }, new Date('2026-11-10T03:00:00Z')); // Nov 9 in Toronto
-    const r = TOOLS.get_activity.run(d, { project: 'antech', since: '2026-11-09', until: '2026-11-09' }, ctx()) as { entries: { kind: string }[] };
+    d = updateProject(d, 'day-job', { nextAction: 'Ship portal' }, new Date('2026-11-10T03:00:00Z')); // Nov 9 in Toronto
+    const r = TOOLS.get_activity.run(d, { project: 'day-job', since: '2026-11-09', until: '2026-11-09' }, ctx()) as { entries: { kind: string }[] };
     expect(r.entries.map((e) => e.kind)).toEqual(['next-action']);
-    const none = TOOLS.get_activity.run(d, { project: 'antech', since: '2026-11-10' }, ctx()) as { entries: unknown[] };
+    const none = TOOLS.get_activity.run(d, { project: 'day-job', since: '2026-11-10' }, ctx()) as { entries: unknown[] };
     expect(none.entries).toEqual([]);
   });
 
@@ -154,7 +154,7 @@ describe('attribution and idempotency', () => {
 
   it('stamps only new entries and finds prior operations', () => {
     const before = seed();
-    const after = updateProject(before, 'antech', { nextAction: 'x', blockers: 'y' }, NOW);
+    const after = updateProject(before, 'day-job', { nextAction: 'x', blockers: 'y' }, NOW);
     const stamped = attributeNewEntries(before, after, ctx({ opId: 'r:abc' }), 't-1');
     const fresh = stamped.activity.slice(0, 2);
     expect(fresh.every((e) => e.opId === 'r:abc' && e.source?.agent === 'ChatGPT' && e.source.clientId === 'client-1' && e.taskId === 't-1')).toBe(true);
@@ -177,21 +177,21 @@ describe('attribution and idempotency', () => {
 
 describe('invariants', () => {
   const before = seed();
-  const reject = (after: AppData, scope = { projectId: 'antech' }) => errorOf(() => checkInvariants(before, after, scope));
+  const reject = (after: AppData, scope = { projectId: 'day-job' }) => errorOf(() => checkInvariants(before, after, scope));
 
   it('allow a scoped change', () => {
-    expect(() => checkInvariants(before, updateProject(before, 'antech', { nextAction: 'x' }, NOW), { projectId: 'antech' })).not.toThrow();
+    expect(() => checkInvariants(before, updateProject(before, 'day-job', { nextAction: 'x' }, NOW), { projectId: 'day-job' })).not.toThrow();
   });
   it('reject status, priority and deadline changes', () => {
-    expect(reject(updateProject(before, 'antech', { status: 'parked' })).code).toBe('NOT_ALLOWED');
-    expect(reject(updateProject(before, 'antech', { priority: 'low' })).details?.[0]).toMatch(/priority/);
-    expect(reject(updateProject(before, 'antech', { deadline: '2027-01-01' })).details?.[0]).toMatch(/deadline/);
+    expect(reject(updateProject(before, 'day-job', { status: 'parked' })).code).toBe('NOT_ALLOWED');
+    expect(reject(updateProject(before, 'day-job', { priority: 'low' })).details?.[0]).toMatch(/priority/);
+    expect(reject(updateProject(before, 'day-job', { deadline: '2027-01-01' })).details?.[0]).toMatch(/deadline/);
   });
   it('reject changes outside the target and any removal', () => {
     expect(reject(updateProject(before, 'mindjax', { nextAction: 'x' })).details?.[0]).toMatch(/Mindjax/);
     expect(reject({ ...before, projects: before.projects.slice(1) }).code).toBe('NOT_ALLOWED');
-    expect(reject({ ...before, projects: before.projects.map((p) => (p.id === 'antech' ? { ...p, tasks: [] } : p)) }).details).toContain(
-      'Antech — Platform Development & Internal Systems: tasks must not be removed',
+    expect(reject({ ...before, projects: before.projects.map((p) => (p.id === 'day-job' ? { ...p, tasks: [] } : p)) }).details).toContain(
+      'Day Job — Internal Tools: tasks must not be removed',
     );
     expect(reject({ ...before, activity: [] }).details).toContain('activity history must not be removed');
     expect(reject({ ...before, settings: { ...before.settings, weeklyCapacity: 99 } }).details).toContain('settings must not change');

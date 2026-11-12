@@ -1,146 +1,106 @@
-# Project Compass
+# Compass
 
-A calm, personal command center for everything you're carrying — employment, Mindjax client work, software products, tabletop and creative projects, career development, and personal commitments.
+A personal project-portfolio dashboard with a secure MCP server, so an AI assistant such as Claude can read and update the portfolio without ever getting raw database access.
 
-**Its job is to help you decide what to work on, not to become another project.**
+Compass answers one question: *what should I work on this week?* It tracks projects, tasks, milestones, a weekly plan and an activity log, and it keeps hard rules: priority is not urgency, deadlines are never invented, and hobbies never nag.
 
-React + TypeScript + Vite + Tailwind, Lucide icons, Recharts for one chart. Hosted as a static site on GitHub Pages, with optional cloud sync through a free Supabase project so the same portfolio is available on all your devices.
+The repository ships with **fictional demo data** (`src/data/seed.ts`). Your real data lives in your browser and, with sync on, in your own Supabase project. It never goes into the repo.
 
----
+## Architecture
 
-## Quick start
+```
+Browser (React SPA on GitHub Pages)
+  │  localStorage working copy, works offline
+  │  Supabase Auth session (email magic link, PKCE)
+  ▼
+Supabase Postgres ── compass_data (one JSON document per user, revision-checked)
+  ▲                  compass_backups, compass_mcp_ops, compass_ai_settings
+  │  SECURITY DEFINER functions, executable by service_role only
+  │
+compass-mcp Edge Function (Deno, MCP over Streamable HTTP)
+  ▲  OAuth 2.1 bearer token (Supabase Auth OAuth server)
+  │
+Claude (custom connector)
+```
+
+| Part | Where | What it does |
+| --- | --- | --- |
+| **Frontend** | `src/` | React + TypeScript + Vite + Tailwind. Static build on GitHub Pages with hash routing. Views: Today, Portfolio, Project, Plan week, Weekly review, Activity, Data & settings, plus the OAuth consent screen. |
+| **Domain logic** | `src/lib/ops.ts`, `selectors.ts`, `storage.ts` | Pure functions over one `AppData` document: changes, activity logging, attention rules, validation and schema migration. No browser dependencies, so the same code runs in Deno. |
+| **Agent layer** | `src/lib/agent/` | Tool schemas, name resolution, invariants and a conflict-safe `runTool`. Bundled into `supabase/functions/_shared/compass-agent.js` by `npm run build:shared`. A test fails if the bundle is stale. |
+| **Sync** | `src/lib/sync.ts`, `src/state/sync.tsx` | The browser copy is the working copy. Edits are pushed with a conditional update (`where revision = base`), so a stale write fails instead of overwriting. If both sides changed, you choose which copy to keep. |
+| **Database** | `supabase/migrations/` | Tables, row-level security and the server-only functions `compass_mcp_authorize`, `compass_mcp_read`, `compass_mcp_commit` and `compass_mcp_log`. |
+| **MCP server** | `supabase/functions/compass-mcp/` | Supabase Edge Function that verifies the caller, runs one tool, and commits through the server-only functions. |
+
+### MCP tools (11)
+
+| Read | Write |
+| --- | --- |
+| `list_projects` — filter by text, category, status, focus, stale | `add_activity` — log progress, a note or a decision |
+| `get_project` — one project with tasks and milestones | `create_task` |
+| `get_activity` — activity log by project and date range | `update_task` — rename, reprioritise, finish or reopen |
+| `get_week_plan` — focus, blocks and capacity for a week | `update_project` — next action, blockers, waiting-on, notes |
+| | `update_week_plan` — change focus projects, add time blocks and notes |
+| | `create_milestone` |
+| | `complete_milestone` |
+
+Full contracts: [docs/integrations/mcp-tools.md](docs/integrations/mcp-tools.md).
+
+## How agent access is secured
+
+The agent is treated as semi-trusted: it acts for you but can be steered by prompt injection. Details: [docs/integrations/security.md](docs/integrations/security.md).
+
+- **OAuth 2.1 with PKCE.** Supabase Auth is the authorization server. Claude registers through dynamic client registration and you approve it on Compass's own consent page while signed in.
+- **Token checks on every call.** The function verifies the JWT against the project's JWKS (asymmetric keys only), checks issuer, expiry and audience, and requires a `client_id` claim that is on your approved-client allowlist. A browser session token is rejected.
+- **A kill switch.** AI access is off until you turn it on in *Data & settings → AI assistants*. Disconnecting a client takes effect immediately.
+- **No direct table access for agents.** Row-level security on `compass_data` refuses any token that carries a `client_id`, so an OAuth token cannot use the REST API. Agents reach data only through `SECURITY DEFINER` functions granted to `service_role`, always keyed by the verified user id.
+- **The service-role key stays on the server.** It exists only as an Edge Function secret supplied by Supabase. It is never in the browser, the repo, or a response.
+- **Narrow tools.** No deletion, no bulk operations, no settings, no raw SQL or document access. Inputs are validated against closed schemas, and tools cannot change status, priority or deadlines.
+- **Invariants before every commit.** A write may change only the targeted project and must not remove tasks, milestones or history.
+- **Safe writes.** Each commit is a revision check plus backup (last 30 kept) plus op-ledger entry in one transaction. A `request_id` makes retries idempotent. Limits: 60 requests and 20 writes per minute, 5 MB document cap.
+- **Attribution.** Every agent change appears in Activity as "via Claude".
+
+## Run it locally
+
+Requires Node 18+ (CI uses Node 22).
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # unit tests (persistence, import/export, operations, selectors)
+npm test           # unit, database (PGlite) and MCP tests
 npm run build      # typecheck + production build into dist/
 ```
 
-Requires Node 18+ (CI uses Node 22). For cloud sync locally, copy `.env.example` to `.env.local` and fill in your Supabase values.
+The app works offline in one browser with no backend. For cloud sync, copy `.env.example` to `.env.local` and fill in your Supabase URL and publishable key.
 
-## What's in v1
+## Set up cloud sync (Supabase)
 
-| View | What it answers |
-| --- | --- |
-| **Today** (dashboard) | What's due today, this week's focus, upcoming deadlines, what you're waiting on, what needs a look, and what you can safely ignore. Health counts are clickable filters. |
-| **Portfolio** | The whole portfolio at a glance — by category (default), by status, or as a list. Waiting projects have a dashed amber edge; paused ones recede; critical ones get a red edge. Progress bars only appear where milestones or tasks make progress measurable. |
-| **Project** | Click any project. Everything is click-to-edit. Next action is the most prominent field, with a one-click **Done**. Tasks, milestones, notes, links, related projects, and the project's activity log. |
-| **Plan week** | Weekly capacity budget, focus projects, suggested allocations (added as *unscheduled* blocks — nothing is auto-scheduled), and a Mon–Sun board. Drag blocks onto days or use the day menu. |
-| **Weekly review** | A 7-step, ~15-minute guided review. Every step can be skipped. Saving records the review in the activity log. |
-| **Activity** | What changed in any given week — status changes, completed tasks and milestones, next-action updates, notes, and decisions. |
-| **Data & settings** | Cloud sync sign-in and status, export/import JSON, automatic one-step backup, restore seed data, theme, capacity. |
+1. Create a Supabase project.
+2. Apply the database: `npx supabase link --project-ref <ref>` then `npx supabase db push`.
+3. *Authentication → URL Configuration*: set **Site URL** to where the app is hosted, and add `http://localhost:5173/` as a redirect URL.
+4. Copy the **Project URL** and the **publishable (anon)** key into `.env.local`, or into GitHub *Settings → Secrets and variables → Actions → Variables* as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Never use the service-role key in the app.
+5. Sign in from *Data & settings → Cloud sync*. Then turn off *Allow new users to sign up* so nobody else can create an account.
 
-Filters (search, category, status, priority, deadline, this week's focus, waiting, needs attention) are shared between the dashboard and the portfolio.
+## Connect Claude (MCP)
 
-### Design rules baked in
+Try this on a staging project first: [docs/integrations/staging-setup.md](docs/integrations/staging-setup.md).
 
-- **Priority ≠ urgency.** Priority is a property of the project; urgency comes only from real dates.
-- **No fabricated deadlines.** Genghis 2027 is stored as *February 2027* (month precision) because no day was given. Month-only dates are never shown as overdue mid-month.
-- **Hobbies never nag.** Projects marked *Low pressure* (Drumming, Shadowdark monthly, Suno) never appear as overdue or "needs attention".
-- **Ongoing commitments** (Antech, Mindjax, job search, recurring hobbies) never show a % complete.
-- **Active ≠ this week.** Focus is chosen deliberately per week; Active projects aren't automatically obligations.
-- Antech's 40 protected hours are shown separately and never counted against discretionary capacity.
+1. *Authentication → OAuth Server*: enable it, allow dynamic client registration, and set **Authorization Path** to `/oauth/consent`. Use an asymmetric JWT signing key (ES256 or RS256).
+2. Deploy the function: `npm run build:shared && npx supabase functions deploy compass-mcp --no-verify-jwt`. The function does its own token checks, so the gateway check is off for this function only.
+3. In Compass, turn on *Data & settings → AI assistants*.
+4. In Claude, add a custom connector with the URL `https://<ref>.supabase.co/functions/v1/compass-mcp` and approve it when Compass asks.
 
-## Your data, backups, and devices — read this
+## Deploy the frontend
 
-Every browser keeps a **working copy** in `localStorage`, so the app is fast and works offline.
+`.github/workflows/deploy.yml` installs, tests, builds and publishes `dist/` to GitHub Pages on every push to `main`. In the repo, set *Settings → Pages → Source* to **GitHub Actions**. The app uses hash routing and a relative base, so it works under any repository name.
 
-**With cloud sync on** (signed in on *Data & settings*):
+## Docs
 
-- Changes are saved to your Supabase database a moment after you make them. Other devices pick them up when the app opens, when you switch back to it, and every minute while it's on screen.
-- Offline edits are kept locally and sent when you reconnect.
-- If two devices both changed before syncing, the app **asks which copy to keep** — it never silently overwrites, and it doesn't merge. The copy you don't pick is saved as that browser's automatic backup.
-- A brand-new browser that only has the starter data simply takes the cloud copy.
-- Import, restore backup, and restore seed data all sync to your other devices.
+- [docs/DECISIONS.md](docs/DECISIONS.md): key design decisions, including the planned weekly-review agent
+- [docs/integrations/](docs/integrations/architecture.md): MCP architecture, security, tool contracts, testing and rollout notes
 
-**Without cloud sync** (not configured, or signed out), data stays in that one browser and clearing site data erases it.
+## Limitations
 
-Either way:
-
-- **Back up:** *Data & settings → Export JSON* (a good habit at the end of each weekly review). Supabase's free tier has no point-in-time restore.
-- **Imports are validated** before anything changes, and the current data is kept as a one-step automatic backup (*Restore automatic backup*).
-- **Deleting** a project/task/milestone shows an **Undo** toast for a few seconds.
-- If stored data ever can't be read, the original is preserved under a `project-compass:data:corrupt:*` key instead of being overwritten.
-- Deploying a new version **does not** touch your data. The data has a `schemaVersion`; older data is migrated on load (see `MIGRATIONS` in `src/lib/storage.ts`).
-
-## Cloud sync setup (Supabase, free tier)
-
-One-time, about 10 minutes.
-
-1. **Create a project** at [supabase.com](https://supabase.com) (free plan).
-2. **Create the table:** *SQL Editor → New query*, paste [`supabase/schema.sql`](supabase/schema.sql), *Run*. It creates one `compass_data` table with row-level security so only you can read or write your row.
-3. **Configure sign-in** — *Authentication*:
-   - *Sign In / Providers → Email*: enabled (default).
-   - *URL Configuration*: **Site URL** `https://<user>.github.io/<repo>/`; add `http://localhost:5173/` under **Redirect URLs** for local use.
-   - Email templates can stay as they are. You sign in by opening the emailed link **in the same browser** you requested it from (on a phone, if your mail app opens links in its own built-in browser, use "Open in Safari/Chrome").
-   - Optional: with custom SMTP configured (*Authentication → Emails → SMTP Settings*), you can add `<p>Your code: {{ .Token }}</p>` to the *Magic Link* template; the app also accepts that code, which works even when the link would open in a different browser.
-4. **Copy the keys** — *Project Settings → API* (or *Connect*): the **Project URL** and the **anon / publishable** key. This key is meant to be public; row-level security is what protects your data. Never use the `service_role` / secret key in this app.
-5. **Give them to the build:**
-   - GitHub: *Settings → Secrets and variables → Actions → Variables* → add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then re-run the deploy workflow.
-   - Local: copy `.env.example` to `.env.local` and fill in the same values, then restart `npm run dev`.
-6. **Sign in:** open the app → *Data & settings → Cloud sync* → enter your email → open the emailed link in the same browser. Do this on your main device first (it uploads your data), then on each other device.
-7. **Optional, recommended:** once you've signed in, turn off *Authentication → Sign In / Providers → Allow new users to sign up*, so nobody else can create an account on your project.
-
-Notes:
-
-- Supabase's built-in email sender is rate-limited (a few emails per hour). You stay signed in on each device, so you rarely need a new code.
-- Free projects are **paused after about a week with no activity**; resume it from the Supabase dashboard. Your browser copies keep working meanwhile.
-
-## Connect an AI assistant (MCP) — work in progress
-
-Branch `feature/mcp-integration` adds an MCP server so an assistant such as **Claude** can read and update Compass (log progress, add tasks and milestones, plan the week). It cannot delete anything or change statuses, priorities or deadlines, and every change appears in Activity as "via <assistant>". Design: [docs/integrations/](docs/integrations/architecture.md).
-
-Setup (do it on a **staging** Supabase project first):
-
-1. **Database:** apply `supabase/migrations/` (`npx supabase link --project-ref <ref>` then `npx supabase db push`). Export a JSON backup first on production.
-2. **Auth:** *Authentication → OAuth Server*: enable it, allow dynamic client registration, set **Authorization Path** to `/oauth/consent`. *JWT signing keys*: use an asymmetric key (ES256/RS256).
-3. **Function:** `npm run build:shared && npx supabase functions deploy compass-mcp --no-verify-jwt`.
-4. **Compass:** *Data & settings → AI assistants* — turn on AI access.
-5. **Claude:** *Settings → Connectors → Add custom connector*, URL `https://<ref>.supabase.co/functions/v1/compass-mcp`. Claude sends you to Compass to approve.
-6. **Disconnect** any time from *Data & settings → AI assistants* (immediate), or turn AI access off.
-
-## Deploying to GitHub Pages
-
-The app uses hash routing and a relative base (`base: './'`), so it works under any repository name without extra config.
-
-1. Create a GitHub repository and push this project to the `main` branch.
-2. In the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Push to `main` (or run the workflow manually). `.github/workflows/deploy.yml` installs, runs tests, builds, and publishes `dist/`.
-4. The site appears at `https://<user>.github.io/<repo>/`.
-
-Note: a public repository makes the **code and seed dataset** (`src/data/seed.ts`) public, including project names. Your edits made in the app are not in the repo — they live in your browser and, with sync on, in your private Supabase table. If you'd rather not publish the seed details, use a private repo (GitHub Pages on private repos requires a paid plan) or trim `seed.ts` before pushing.
-
-Manual alternative: `npm run build` and serve `dist/` from any static host.
-
-## Project structure
-
-```
-src/
-  data/        types.ts (schema), meta.ts (labels/colors), seed.ts (initial snapshot)
-  lib/         dates.ts, storage.ts (persist/migrate/validate/import/export),
-               ops.ts (pure data operations + activity logging), selectors.ts (attention,
-               deadlines, filters, capacity), sync.ts (sync decisions), cloud.ts (Supabase calls),
-               *.test.ts
-  state/       store.tsx (React context + persistence), sync.tsx (cloud sync), router.ts, hooks.ts
-  components/  Shell, SyncPanel, FilterBar, ProjectCard, ActivityList, NewProject, ui/ primitives
-supabase/      schema.sql (table + row-level security)
-  views/       Dashboard, Portfolio, ProjectDetail, Planner, Review, Activity, DataSettings
-```
-
-Data is kept separate from presentation: views call pure functions in `lib/ops.ts` through `apply(fn)`; all derived logic lives in `lib/selectors.ts` and is unit-tested.
-
-### Changing the schema later
-
-1. Bump `SCHEMA_VERSION` in `src/data/types.ts`.
-2. Add a migration in `MIGRATIONS` (`src/lib/storage.ts`) keyed by the old version.
-3. Add a test that migrates a sample of the old shape.
-
-## Limitations (v1, by design)
-
-- Single user. Sync keeps whole copies in step; it doesn't merge simultaneous edits from two devices (you choose which copy wins).
-- Sync needs the Supabase project; without it the app is browser-only.
-- AI assistant access (branch only) needs the migrations, Supabase's OAuth server (beta) and the `compass-mcp` Edge Function.
-- No notifications, calendar sync, time tracking, AI features, or integrations.
-- Activity log keeps the most recent 2,000 entries.
-- Recurring blocks aren't auto-repeated; use **Copy last week** in the planner.
+- Single user. Sync keeps whole copies in step and does not merge simultaneous edits.
+- The MCP server depends on Supabase's OAuth 2.1 server, which is in beta.
+- The activity log keeps the most recent 2,000 entries.

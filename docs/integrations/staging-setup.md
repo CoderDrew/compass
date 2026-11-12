@@ -1,6 +1,6 @@
 # Phase 4: staging setup checklist
 
-Staging project: **compass-staging** (`nwadkhsvsdaodsmrbcfb`). Production (`hfyeacobsuxakoyvjwkm`) is not touched in this phase.
+Staging project: **compass-staging** (`<staging-ref>`). Production (`<production-ref>`) is not touched in this phase.
 
 Staging app = your local dev server (`npm run dev:staging`, http://localhost:5173) pointed at staging. Supabase sends AI-approval requests to that local page, which works because it opens in your own browser.
 
@@ -19,7 +19,7 @@ npx supabase login
 ```
 
 ```bash
-npx supabase db push --remote=nwadkhsvsdaodsmrbcfb
+npx supabase db push --remote=<staging-ref>
 ```
 
 The second command asks for the staging **database password** (the one you chose when creating the project). It applies the three migrations in `supabase/migrations/`.
@@ -28,10 +28,10 @@ The second command asks for the staging **database password** (the one you chose
 
 ```bash
 npm run build:shared
-npx supabase functions deploy compass-mcp --project-ref nwadkhsvsdaodsmrbcfb --no-verify-jwt --use-api
+npx supabase functions deploy compass-mcp --project-ref <staging-ref> --no-verify-jwt --use-api
 ```
 
-Endpoint: `https://nwadkhsvsdaodsmrbcfb.supabase.co/functions/v1/compass-mcp`
+Endpoint: `https://<staging-ref>.supabase.co/functions/v1/compass-mcp`
 
 ## 4. Staging app — you
 
@@ -58,10 +58,10 @@ See [testing.md](testing.md#acceptance-criteria-phase-4-staging). Results get re
 | 2026-11-11 | Tables & grants on real Supabase | All 4 tables exist; `anon` gets `42501` on every table and on `compass_mcp_read` |
 | 2026-11-11 | Claude connected (OAuth: DCR → Supabase authorize → Compass consent → Claude) | Works |
 | 2026-11-11 | Scenario: "everything I'm working on this week" | Correct portfolio summary from `list_projects`/`get_week_plan` |
-| 2026-11-11 | Scenario: "Mark the Voidraider playtesting task complete" | Claude recognised it as a milestone; `complete_milestone`; entry attributed "Claude" |
-| 2026-11-11 | Scenario: "Log today's Antech accomplishments …" | One note on Antech, attributed "Claude"; tasks correctly left open |
+| 2026-11-11 | Scenario: "Mark the Starfall playtesting task complete" | Claude recognised it as a milestone; `complete_milestone`; entry attributed "Claude" |
+| 2026-11-11 | Scenario: "Log today's Starfall progress …" | One note on Starfall, attributed "Claude"; tasks correctly left open |
 | 2026-11-11 | Scenario: "What projects haven't received attention recently?" | Correct answer: staging data was seeded today, so nothing is stale yet |
-| 2026-11-11 | Scenario: "Move Ravenloft into this week's focus" (via connector) | Added once; week 2026-11-09 computed in Mountain time |
+| 2026-11-11 | Scenario: "Move Lighthouse into this week's focus" (via connector) | Added once; week 2026-11-09 computed in Mountain time |
 | 2026-11-11 | Duplicate request (same `request_id`) | Second call `duplicate: true`, nothing written |
 
 ### Manual checks (done by you, 2026-11-11) — all passed

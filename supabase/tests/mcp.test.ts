@@ -129,11 +129,11 @@ describe('MCP protocol end to end', () => {
   });
 
   it('reads and writes real data, attributed to the approved client name', async () => {
-    const list = await client.callTool({ name: 'list_projects', arguments: { query: 'voidraider' } });
+    const list = await client.callTool({ name: 'list_projects', arguments: { query: 'starfall' } });
     expect(list.isError).toBeFalsy();
-    expect((list.structuredContent as { projects: { id: string }[] }).projects.map((p) => p.id).sort()).toEqual(['voidraider', 'voidraider-photos']);
+    expect((list.structuredContent as { projects: { id: string }[] }).projects.map((p) => p.id).sort()).toEqual(['starfall', 'starfall-photos']);
 
-    const write = await client.callTool({ name: 'complete_milestone', arguments: { project: 'Voidraider', milestone: 'playtesting', request_id: 'r1' } });
+    const write = await client.callTool({ name: 'complete_milestone', arguments: { project: 'Starfall', milestone: 'playtesting', request_id: 'r1' } });
     expect(write.isError).toBeFalsy();
     expect(write.structuredContent).toMatchObject({ ok: true, milestone: { title: 'Physical playtesting round', done: true } });
 
@@ -141,17 +141,17 @@ describe('MCP protocol end to end', () => {
     expect(row.revision).toBe(2);
     expect(row.data.activity[0]).toMatchObject({ kind: 'milestone', source: { type: 'agent', agent: 'Claude', clientId: CLIENT } });
 
-    const again = await client.callTool({ name: 'complete_milestone', arguments: { project: 'Voidraider', milestone: 'playtesting', request_id: 'r1' } });
+    const again = await client.callTool({ name: 'complete_milestone', arguments: { project: 'Starfall', milestone: 'playtesting', request_id: 'r1' } });
     expect(again.structuredContent).toMatchObject({ ok: true, duplicate: true });
     expect((await dataOf(db)).revision).toBe(2);
   });
 
   it('returns structured, actionable errors as tool results', async () => {
-    const amb = await client.callTool({ name: 'add_activity', arguments: { project: 'Olympus', text: 'x' } });
+    const amb = await client.callTool({ name: 'add_activity', arguments: { project: 'Harbor', text: 'x' } });
     expect(amb.isError).toBe(true);
     expect(amb.structuredContent).toMatchObject({ ok: false, error: { code: 'AMBIGUOUS_REFERENCE' } });
 
-    const bad = await client.callTool({ name: 'update_project', arguments: { project: 'antech', status: 'parked' } });
+    const bad = await client.callTool({ name: 'update_project', arguments: { project: 'day-job', status: 'parked' } });
     expect(bad.structuredContent).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT', details: ['status is not a recognised field'] } });
     expect((await dataOf(db)).revision).toBe(1);
   });

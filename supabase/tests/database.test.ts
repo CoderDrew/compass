@@ -128,7 +128,7 @@ describe('server functions (service role)', () => {
   });
 
   it('commit is an atomic compare-and-set that backs up the previous document', async () => {
-    const next = recordEntry(seed(), 'antech', 'note', 'agent note');
+    const next = recordEntry(seed(), 'day-job', 'note', 'agent note');
     const ok = await rpc.rpc('compass_mcp_commit', { p_user: U1, p_expected: 1, p_data: next, p_op_id: 'r:1', p_device: 'ChatGPT' });
     expect(ok.data).toEqual({ ok: true, revision: 2 });
     const stale = await rpc.rpc('compass_mcp_commit', { p_user: U1, p_expected: 1, p_data: seed(), p_op_id: 'r:2' });
@@ -195,21 +195,21 @@ describe('data service end to end (handleToolCall → SQL)', () => {
 
   it('writes an attributed change, backs up, logs, and the browser sees it', async () => {
     await enableAi(db);
-    const r = await handleToolCall(serviceRpc(db), caller, 'add_activity', { project: 'Antech', text: 'WordPress updates' }, { now: NOW });
+    const r = await handleToolCall(serviceRpc(db), caller, 'add_activity', { project: 'Day Job', text: 'WordPress updates' }, { now: NOW });
     expect(r).toMatchObject({ ok: true, revision: 2 });
 
     // What the browser pulls (direct session).
     const pulled = await as(db, 'authenticated', browser(U1), (tx) => tx.query<{ data: AppData; revision: number }>('select data, revision from public.compass_data'));
     const entry = pulled.rows[0].data.activity[0];
     expect(pulled.rows[0].revision).toBe(2);
-    expect(entry).toMatchObject({ text: 'WordPress updates', projectId: 'antech', source: { type: 'agent', agent: 'Claude', clientId: CLIENT } });
+    expect(entry).toMatchObject({ text: 'WordPress updates', projectId: 'day-job', source: { type: 'agent', agent: 'Claude', clientId: CLIENT } });
 
     expect((await db.query('select count(*)::int as n from public.compass_backups')).rows[0]).toEqual({ n: 1 });
     const ops = await db.query('select tool, kind, outcome, revision_after::int as rev, client_id from public.compass_mcp_ops');
     expect(ops.rows).toEqual([{ tool: 'add_activity', kind: 'write', outcome: 'ok', rev: 2, client_id: CLIENT }]);
 
     // Repeat → duplicate, no new revision.
-    const again = await handleToolCall(serviceRpc(db), caller, 'add_activity', { project: 'Antech', text: 'WordPress updates' }, { now: new Date(NOW.getTime() + 60_000) });
+    const again = await handleToolCall(serviceRpc(db), caller, 'add_activity', { project: 'Day Job', text: 'WordPress updates' }, { now: new Date(NOW.getTime() + 60_000) });
     expect(again).toMatchObject({ ok: true, duplicate: true, revision: 2 });
   });
 
@@ -231,11 +231,11 @@ describe('data service end to end (handleToolCall → SQL)', () => {
         return base.rpc(fn, args);
       },
     };
-    const r = await handleToolCall(racing, caller, 'create_task', { project: 'oneshotz', title: 'Draft vendor schema' }, { now: NOW });
+    const r = await handleToolCall(racing, caller, 'create_task', { project: 'tablebook', title: 'Draft vendor schema' }, { now: NOW });
     expect(r).toMatchObject({ ok: true, revision: 3, attempts: 2 });
     const final = await row(db);
     expect(final.data.activity.map((e) => e.text)).toEqual(expect.arrayContaining(['typed in the browser', 'Added task: Draft vendor schema']));
-    expect(final.data.projects.find((p) => p.id === 'oneshotz')!.tasks.some((t) => t.title === 'Draft vendor schema')).toBe(true);
+    expect(final.data.projects.find((p) => p.id === 'tablebook')!.tasks.some((t) => t.title === 'Draft vendor schema')).toBe(true);
   });
 
   it('uses the time zone stored in settings', async () => {

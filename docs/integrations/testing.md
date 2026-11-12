@@ -48,12 +48,12 @@
 1. Claude (custom connector) connects via OAuth with PKCE; consent page shows the client; deny works.
 2. Still connected after the first access token expires (refresh works) — or the limitation is documented.
 3. Each example request from the brief produces the right change, visible in Compass's Activity view with "via Claude" attribution:
-   - "Log today's Antech accomplishments: …" → one note on Antech.
+   - "Log today's Starfall progress: …" → one note on Starfall.
    - "Show me everything I'm working on this week." → week plan + focus projects.
-   - "Mark the Voidraider playtesting task complete." → task done, completion logged; ambiguity → asks.
-   - "Add a new milestone to OneShotz." → (if D3) milestone with no invented date.
+   - "Mark the Starfall playtesting task complete." → task done, completion logged; ambiguity → asks.
+   - "Add a new milestone to Tablebook." → (if D3) milestone with no invented date.
    - "What projects haven't received attention recently?" → stale list, hobbies not nagged.
-   - "Move Ravenloft into this week's focus." → focus added once.
+   - "Move Lighthouse into this week's focus." → focus added once.
    - "Update my AI career development project with today's progress." → note/next action.
 4. Browser open with unsynced edits while the agent writes → no silent loss: either agent rebases (server) or the browser asks (client), and the losing copy is recoverable.
 5. Repeating the same request (same `request_id`) changes nothing the second time.
