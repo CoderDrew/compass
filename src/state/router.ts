@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 
 // Minimal hash router — works on GitHub Pages without server rewrites.
-export type View = 'dashboard' | 'portfolio' | 'project' | 'plan' | 'review' | 'activity' | 'data' | 'oauth';
+export type View = 'dashboard' | 'portfolio' | 'project' | 'plan' | 'review' | 'activity' | 'journal' | 'data' | 'oauth';
 
 export interface Route {
   view: View;
   param?: string;
 }
 
-const VIEWS: View[] = ['dashboard', 'portfolio', 'project', 'plan', 'review', 'activity', 'data', 'oauth'];
+const VIEWS: View[] = ['dashboard', 'portfolio', 'project', 'plan', 'review', 'activity', 'journal', 'data', 'oauth'];
 
 export function parseHash(hash: string): Route {
   const [view, param] = hash.replace(/^#\/?/, '').split('?')[0].split('/');

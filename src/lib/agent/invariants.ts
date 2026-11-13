@@ -1,6 +1,7 @@
 // Post-conditions every agent write must satisfy before it may be committed. These are
 // the server-side guard rails behind the narrow tool contracts: no deletions, no changes
-// outside the target, no status/priority/deadline edits in the first release.
+// outside the target, no status/priority/deadline edits in the first release. The journal is
+// off-limits to every current tool (journal tools arrive separately).
 
 import type { AppData, Project } from '../../data/types.ts';
 import { validate } from '../storage.ts';
@@ -25,7 +26,7 @@ const withoutTouch = (p: Project) => ({ ...p, lastActivity: '', updatedAt: '' })
 export function checkInvariants(before: AppData, after: AppData, scope: Scope): void {
   const problems: string[] = [];
 
-  for (const k of ['schemaVersion', 'seededAt', 'settings', 'allocations'] as const)
+  for (const k of ['schemaVersion', 'seededAt', 'settings', 'allocations', 'journal'] as const)
     if (!same(before[k], after[k])) problems.push(`${k} must not change`);
 
   // Projects: none added or removed; only the target may change.

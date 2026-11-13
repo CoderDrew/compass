@@ -343,6 +343,7 @@ export function createSeedData(now: Date = new Date()): AppData {
     schemaVersion: SCHEMA_VERSION,
     projects,
     activity: [{ id: nid('a'), at: iso, kind: 'project', text: 'Portfolio seeded with initial snapshot' }],
+    journal: [],
     weeks: {},
     allocations: [
       { id: 'alloc-employment', label: 'Day job — regular employment hours', projectIds: ['day-job'], blocks: 1, kind: 'fixed', protected: true },

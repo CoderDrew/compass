@@ -2,7 +2,7 @@
 // Meaningful changes append to the activity log automatically.
 
 import { statusLabel } from '../data/meta.ts';
-import type { ActivityEntry, ActivityKind, AppData, Milestone, PlanBlock, Project, Settings, Task, WeekPlan } from '../data/types.ts';
+import type { ActivityEntry, ActivityKind, AppData, JournalEntry, Milestone, PlanBlock, Project, Settings, Task, WeekPlan } from '../data/types.ts';
 
 export function uid(prefix = 'id'): string {
   const c = globalThis.crypto as Crypto | undefined;
@@ -168,6 +168,57 @@ export function recordEntry(d: AppData, projectId: string | undefined, kind: 'no
 
 export function deleteActivity(d: AppData, activityId: string): AppData {
   return { ...d, activity: d.activity.filter((a) => a.id !== activityId) };
+}
+
+// ── Journal ─────────────────────────────────────────────────────
+// Not mirrored into `activity`: the journal is its own history and is never capped.
+
+export const MAX_JOURNAL_TEXT = 4000;
+
+export function addJournalEntry(
+  d: AppData,
+  fields: { day: string; text: string; keep?: boolean; projectIds?: string[] },
+  now = new Date(),
+): AppData {
+  const text = fields.text.trim().slice(0, MAX_JOURNAL_TEXT);
+  if (!text) return d;
+  const projectIds = fields.projectIds?.filter((id) => d.projects.some((p) => p.id === id));
+  const e: JournalEntry = {
+    id: uid('j'),
+    day: fields.day,
+    at: now.toISOString(),
+    text,
+    ...(fields.keep ? { keep: true } : {}),
+    ...(projectIds?.length ? { projectIds } : {}),
+  };
+  return { ...d, journal: [e, ...d.journal] };
+}
+
+/** Edit the user's own entry. Agent-written entries are read-only in the app. */
+export function updateJournalEntry(d: AppData, id: string, patch: { text?: string; keep?: boolean }, now = new Date()): AppData {
+  const before = d.journal.find((j) => j.id === id);
+  if (!before || before.source) return d;
+  const next: JournalEntry = { ...before };
+  if (patch.text !== undefined) {
+    const text = patch.text.trim().slice(0, MAX_JOURNAL_TEXT);
+    if (!text || text === before.text) return patch.keep === undefined ? d : updateJournalEntry(d, id, { keep: patch.keep }, now);
+    next.text = text;
+    next.editedAt = now.toISOString();
+  }
+  if (patch.keep !== undefined) {
+    if (patch.keep) next.keep = true;
+    else delete next.keep;
+  }
+  return { ...d, journal: d.journal.map((j) => (j.id === id ? next : j)) };
+}
+
+export function deleteJournalEntry(d: AppData, id: string): AppData {
+  return { ...d, journal: d.journal.filter((j) => j.id !== id) };
+}
+
+/** Entries for one day, oldest first (reads like a page). */
+export function journalForDay(d: AppData, day: string): JournalEntry[] {
+  return d.journal.filter((j) => j.day === day).sort((a, b) => a.at.localeCompare(b.at));
 }
 
 // ── Weekly plans ────────────────────────────────────────────────
