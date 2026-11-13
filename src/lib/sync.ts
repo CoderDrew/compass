@@ -44,7 +44,7 @@ export function planSync(meta: SyncMeta | null, remote: RemoteRow | null, sameCo
 
 /** True for a browser that only has the untouched seed dataset (safe to replace without asking). */
 export function isPristineSeed(d: AppData): boolean {
-  return d.activity.length === 1 && d.activity[0].kind === 'project' && d.activity[0].text === 'Portfolio seeded with initial snapshot';
+  return !d.journal?.length && d.activity.length === 1 && d.activity[0].kind === 'project' && d.activity[0].text === 'Portfolio seeded with initial snapshot';
 }
 
 /** JSON with sorted keys, so data that round-tripped through Postgres jsonb compares equal. */

@@ -394,6 +394,7 @@ function createSeedData(now = /* @__PURE__ */ new Date()) {
     schemaVersion: SCHEMA_VERSION,
     projects,
     activity: [{ id: nid("a"), at: iso, kind: "project", text: "Portfolio seeded with initial snapshot" }],
+    journal: [],
     weeks: {},
     allocations: [
       { id: "alloc-employment", label: "Day job — regular employment hours", projectIds: ["day-job"], blocks: 1, kind: "fixed", protected: true },
@@ -457,6 +458,7 @@ var isObj = (x) => typeof x === "object" && x !== null && !Array.isArray(x);
 var isStr = (x) => typeof x === "string";
 var optStr = (x) => x === void 0 || isStr(x);
 var optDue = (x) => x === void 0 || x === "" || isValidDue(x);
+var isDay = (x) => isStr(x) && /^\d{4}-\d{2}-\d{2}$/.test(x);
 function validate(data) {
   const errs = [];
   if (!isObj(data)) return ["File does not contain a JSON object."];
@@ -500,6 +502,17 @@ function validate(data) {
     if (a.source !== void 0 && !(isObj(a.source) && a.source.type === "agent" && isStr(a.source.agent) && optStr(a.source.clientId)))
       errs.push(`Activity entry #${i + 1} has an invalid source.`);
   });
+  if (data.journal !== void 0 && !Array.isArray(data.journal)) errs.push('"journal" must be a list.');
+  else
+    (data.journal ?? []).forEach((j, i) => {
+      const at = `Journal entry #${i + 1}`;
+      if (!isObj(j) || !isStr(j.id) || !isDay(j.day) || !isStr(j.at) || !isStr(j.text)) return errs.push(`${at} is invalid.`);
+      if (j.keep !== void 0 && typeof j.keep !== "boolean") errs.push(`${at}: "keep" must be true or false.`);
+      if (j.projectIds !== void 0 && !(Array.isArray(j.projectIds) && j.projectIds.every(isStr))) errs.push(`${at} has invalid projects.`);
+      if (!optStr(j.opId) || !optStr(j.editedAt)) errs.push(`${at} has an invalid field.`);
+      if (j.source !== void 0 && !(isObj(j.source) && j.source.type === "agent" && isStr(j.source.agent) && optStr(j.source.clientId)))
+        errs.push(`${at} has an invalid source.`);
+    });
   return errs;
 }
 function normalize(data) {
@@ -512,6 +525,7 @@ function normalize(data) {
     allocations: Array.isArray(d.allocations) ? d.allocations : seed.allocations,
     weeks: d.weeks ?? {},
     activity: d.activity ?? [],
+    journal: Array.isArray(d.journal) ? d.journal : [],
     projects: (d.projects ?? []).map(
       (p) => ({
         ...p,
@@ -555,7 +569,7 @@ var same = (a, b) => stableStringify(a) === stableStringify(b);
 var withoutTouch = (p) => ({ ...p, lastActivity: "", updatedAt: "" });
 function checkInvariants(before, after, scope) {
   const problems = [];
-  for (const k of ["schemaVersion", "seededAt", "settings", "allocations"])
+  for (const k of ["schemaVersion", "seededAt", "settings", "allocations", "journal"])
     if (!same(before[k], after[k])) problems.push(`${k} must not change`);
   const afterById = new Map(after.projects.map((p) => [p.id, p]));
   if (after.projects.length !== before.projects.length) problems.push("projects must not be added or removed");

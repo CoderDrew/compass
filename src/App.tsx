@@ -3,6 +3,7 @@ import { useRoute } from './state/router';
 import { Activity } from './views/Activity';
 import { Dashboard } from './views/Dashboard';
 import { DataSettings } from './views/DataSettings';
+import { Journal } from './views/Journal';
 import { OAuthConsent } from './views/OAuthConsent';
 import { Planner } from './views/Planner';
 import { Portfolio } from './views/Portfolio';
@@ -27,6 +28,9 @@ export default function App() {
       break;
     case 'activity':
       view = <Activity />;
+      break;
+    case 'journal':
+      view = <Journal day={route.param} />;
       break;
     case 'data':
       view = <DataSettings />;

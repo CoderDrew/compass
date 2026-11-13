@@ -112,6 +112,27 @@ export interface ActivityEntry {
   opId?: string;
 }
 
+/**
+ * One entry in the daily journal: something worth remembering, written by Drew in the app,
+ * or a short end-of-work summary posted by an agent (slice 2). Kept apart from `activity`,
+ * which is a capped, machine-written change log.
+ */
+export interface JournalEntry {
+  id: string;
+  /** The journal day this belongs to (YYYY-MM-DD, the writer's local date). */
+  day: string;
+  /** When it was written (ISO timestamp). */
+  at: string;
+  text: string;
+  /** "Commit to memory" — surfaced again later. Only set by the user. */
+  keep?: boolean;
+  projectIds?: string[];
+  /** Set when an agent wrote the entry. Absent = written in Compass by the user. */
+  source?: ActivitySource;
+  opId?: string;
+  editedAt?: string;
+}
+
 export type BlockKind = 'fixed' | 'deadline' | 'session' | 'recurring' | 'focus';
 
 export interface PlanBlock {
@@ -160,6 +181,8 @@ export interface AppData {
   schemaVersion: number;
   projects: Project[];
   activity: ActivityEntry[];
+  /** Daily journal, newest first. Optional in stored data (added without a schema bump). */
+  journal: JournalEntry[];
   weeks: Record<string, WeekPlan>;
   allocations: AllocationSuggestion[];
   settings: Settings;

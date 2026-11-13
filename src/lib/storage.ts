@@ -45,6 +45,7 @@ const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object
 const isStr = (x: unknown): x is string => typeof x === 'string';
 const optStr = (x: unknown) => x === undefined || isStr(x);
 const optDue = (x: unknown) => x === undefined || x === '' || isValidDue(x);
+const isDay = (x: unknown) => isStr(x) && /^\d{4}-\d{2}-\d{2}$/.test(x);
 
 /** Returns a list of human-readable problems. Empty list = valid. */
 export function validate(data: unknown): string[] {
@@ -91,6 +92,17 @@ export function validate(data: unknown): string[] {
     if (a.source !== undefined && !(isObj(a.source) && a.source.type === 'agent' && isStr(a.source.agent) && optStr(a.source.clientId)))
       errs.push(`Activity entry #${i + 1} has an invalid source.`);
   });
+  if (data.journal !== undefined && !Array.isArray(data.journal)) errs.push('"journal" must be a list.');
+  else
+    ((data.journal as unknown[] | undefined) ?? []).forEach((j, i) => {
+      const at = `Journal entry #${i + 1}`;
+      if (!isObj(j) || !isStr(j.id) || !isDay(j.day) || !isStr(j.at) || !isStr(j.text)) return errs.push(`${at} is invalid.`);
+      if (j.keep !== undefined && typeof j.keep !== 'boolean') errs.push(`${at}: "keep" must be true or false.`);
+      if (j.projectIds !== undefined && !(Array.isArray(j.projectIds) && j.projectIds.every(isStr))) errs.push(`${at} has invalid projects.`);
+      if (!optStr(j.opId) || !optStr(j.editedAt)) errs.push(`${at} has an invalid field.`);
+      if (j.source !== undefined && !(isObj(j.source) && j.source.type === 'agent' && isStr(j.source.agent) && optStr(j.source.clientId)))
+        errs.push(`${at} has an invalid source.`);
+    });
   return errs;
 }
 
@@ -105,6 +117,7 @@ export function normalize(data: Record<string, unknown>): AppData {
     allocations: Array.isArray(d.allocations) ? d.allocations : seed.allocations,
     weeks: d.weeks ?? {},
     activity: d.activity ?? [],
+    journal: Array.isArray(d.journal) ? d.journal : [],
     projects: (d.projects ?? []).map(
       (p): Project => ({
         ...p,

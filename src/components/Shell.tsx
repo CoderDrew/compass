@@ -1,4 +1,4 @@
-import { CalendarRange, ClipboardCheck, Compass, Database, History, LayoutGrid, Moon, Sun } from 'lucide-react';
+import { CalendarRange, ClipboardCheck, Compass, Database, History, LayoutGrid, Moon, NotebookPen, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { href, type View } from '../state/router';
 import { useStore } from '../state/store';
@@ -11,6 +11,7 @@ const NAV: { view: View; label: string; icon: ReactNode; mobile?: string }[] = [
   { view: 'portfolio', label: 'Portfolio', icon: <LayoutGrid size={18} />, mobile: 'Portfolio' },
   { view: 'plan', label: 'Plan week', icon: <CalendarRange size={18} />, mobile: 'Plan' },
   { view: 'review', label: 'Weekly review', icon: <ClipboardCheck size={18} />, mobile: 'Review' },
+  { view: 'journal', label: 'Journal', icon: <NotebookPen size={18} />, mobile: 'Journal' },
   { view: 'activity', label: 'Activity', icon: <History size={18} />, mobile: 'Activity' },
   { view: 'data', label: 'Data & settings', icon: <Database size={18} />, mobile: 'Settings' },
 ];
@@ -87,7 +88,7 @@ export function Shell({ view, children }: { view: View; children: ReactNode }) {
       </main>
 
       {/* Mobile tab bar */}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-line/70 bg-surface/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-line/70 bg-surface/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
         {NAV.filter((n) => n.mobile).map((n) => (
           <a
             key={n.view}
