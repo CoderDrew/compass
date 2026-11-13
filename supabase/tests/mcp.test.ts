@@ -116,10 +116,10 @@ describe('MCP protocol end to end', () => {
     client = await connect(handlerFor(db), await token());
   });
 
-  it('lists the 11 tools with schemas and correct annotations', async () => {
+  it('lists the 13 tools with schemas and correct annotations', async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ['add_activity', 'complete_milestone', 'create_milestone', 'create_task', 'get_activity', 'get_project', 'get_week_plan', 'list_projects', 'update_project', 'update_task', 'update_week_plan'].sort(),
+      ['add_activity', 'add_journal_summary', 'complete_milestone', 'create_milestone', 'create_task', 'get_activity', 'get_journal', 'get_project', 'get_week_plan', 'list_projects', 'update_project', 'update_task', 'update_week_plan'].sort(),
     );
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
     expect(byName.list_projects.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, openWorldHint: false });

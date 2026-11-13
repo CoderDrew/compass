@@ -2,7 +2,7 @@
 // log — no parallel history. Every entry an operation adds is stamped with `source` and
 // `opId`, which is also how repeated requests are detected.
 
-import type { ActivityEntry, ActivitySource, AppData } from '../../data/types.ts';
+import type { ActivityEntry, ActivitySource, AppData, JournalEntry } from '../../data/types.ts';
 import { stableStringify } from '../sync.ts';
 
 export interface AgentContext {
@@ -46,24 +46,38 @@ export function deriveOpId(tool: string, input: Record<string, unknown>, now: Da
 
 const hashPart = (opId: string) => (opId.startsWith('h:') ? opId.split(':')[1] : null);
 
-/** Activity entries already written by this operation (or an identical recent one). */
-export function findPriorOp(d: AppData, opId: string, now: Date): ActivityEntry[] {
+/** A record written by an earlier operation: an activity entry, or a journal summary (`kind: 'journal'`). */
+export interface PriorEntry {
+  id: string;
+  at: string;
+  kind: ActivityEntry['kind'] | 'journal';
+  text: string;
+  opId?: string;
+}
+
+/** Entries already written by this operation (or an identical recent one), activity and journal. */
+export function findPriorOp(d: AppData, opId: string, now: Date): PriorEntry[] {
   const h = hashPart(opId);
   const since = now.getTime() - DEDUPE_WINDOW_MS;
-  return d.activity.filter((e) => {
+  const matches = (e: { opId?: string; at: string }) => {
     if (!e.opId) return false;
     if (e.opId === opId) return true;
     return h !== null && hashPart(e.opId) === h && new Date(e.at).getTime() >= since;
-  });
+  };
+  return [
+    ...d.activity.filter(matches),
+    ...(d.journal ?? []).filter(matches).map((j: JournalEntry): PriorEntry => ({ id: j.id, at: j.at, kind: 'journal', text: j.text, opId: j.opId })),
+  ];
 }
 
 export function sourceOf(ctx: AgentContext): ActivitySource {
   return { type: 'agent', agent: ctx.agent, ...(ctx.clientId ? { clientId: ctx.clientId } : {}) };
 }
 
-/** Stamp every activity entry present in `after` but not in `before` with source/opId (and taskId if given). */
+/** Stamp every activity and journal entry present in `after` but not in `before` with source/opId (and taskId if given). */
 export function attributeNewEntries(before: AppData, after: AppData, ctx: AgentContext, taskId?: string): AppData {
   const old = new Set(before.activity.map((e) => e.id));
+  const oldJournal = new Set(before.journal.map((e) => e.id));
   const source = sourceOf(ctx);
   let changed = false;
   const activity = after.activity.map((e) => {
@@ -71,5 +85,10 @@ export function attributeNewEntries(before: AppData, after: AppData, ctx: AgentC
     changed = true;
     return { ...e, source, opId: ctx.opId, ...(taskId && !e.taskId ? { taskId } : {}) };
   });
-  return changed ? { ...after, activity } : after;
+  const journal = after.journal.map((e) => {
+    if (oldJournal.has(e.id)) return e;
+    changed = true;
+    return { ...e, source, opId: ctx.opId };
+  });
+  return changed ? { ...after, activity, journal } : after;
 }

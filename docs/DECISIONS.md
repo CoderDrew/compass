@@ -53,6 +53,10 @@ Each commit runs a revision check, saves a backup (last 30 kept), records an op-
 ### 12. Claude as the primary MCP client (D1, revised) — Built
 The plan started with ChatGPT, but custom MCP servers in ChatGPT need a Business or Enterprise plan. Claude's custom connectors support remote MCP with OAuth and dynamic client registration, so Claude became the primary client.
 
+### 14. Daily journal, with agent summaries — Built
+A per-day journal kept apart from the capped activity log. The user writes notes and stars the ones to remember. Agents post short end-of-work summaries with `add_journal_summary` and read them with `get_journal`, bringing the server to 13 tools. Agents can only append attributed summaries, dated today or up to 7 days back, at most 30 per day. They never edit, delete or star anything. `get_journal` returns agent summaries and starred notes only; the user's other notes stay private. Summaries are attributed and de-duplicated on the journal entry itself and are not copied into Activity.
+**Why:** the activity log records individual changes, not the story of a day. Keeping unstarred notes out of agent reach limits what prompt injection can see or plant, and agents don't need them to write a summary.
+
 ## Planned
 
 ### 13. Weekly-review agent (LangGraph, TypeScript) — Planned, not built

@@ -32,17 +32,22 @@ var hashPart = (opId) => opId.startsWith("h:") ? opId.split(":")[1] : null;
 function findPriorOp(d, opId, now) {
   const h = hashPart(opId);
   const since = now.getTime() - DEDUPE_WINDOW_MS;
-  return d.activity.filter((e) => {
+  const matches = (e) => {
     if (!e.opId) return false;
     if (e.opId === opId) return true;
     return h !== null && hashPart(e.opId) === h && new Date(e.at).getTime() >= since;
-  });
+  };
+  return [
+    ...d.activity.filter(matches),
+    ...(d.journal ?? []).filter(matches).map((j) => ({ id: j.id, at: j.at, kind: "journal", text: j.text, opId: j.opId }))
+  ];
 }
 function sourceOf(ctx) {
   return { type: "agent", agent: ctx.agent, ...ctx.clientId ? { clientId: ctx.clientId } : {} };
 }
 function attributeNewEntries(before, after, ctx, taskId) {
   const old = new Set(before.activity.map((e) => e.id));
+  const oldJournal = new Set(before.journal.map((e) => e.id));
   const source = sourceOf(ctx);
   let changed = false;
   const activity = after.activity.map((e) => {
@@ -50,7 +55,12 @@ function attributeNewEntries(before, after, ctx, taskId) {
     changed = true;
     return { ...e, source, opId: ctx.opId, ...taskId && !e.taskId ? { taskId } : {} };
   });
-  return changed ? { ...after, activity } : after;
+  const journal = after.journal.map((e) => {
+    if (oldJournal.has(e.id)) return e;
+    changed = true;
+    return { ...e, source, opId: ctx.opId };
+  });
+  return changed ? { ...after, activity, journal } : after;
 }
 
 // src/lib/agent/errors.ts
@@ -569,7 +579,7 @@ var same = (a, b) => stableStringify(a) === stableStringify(b);
 var withoutTouch = (p) => ({ ...p, lastActivity: "", updatedAt: "" });
 function checkInvariants(before, after, scope) {
   const problems = [];
-  for (const k of ["schemaVersion", "seededAt", "settings", "allocations", "journal"])
+  for (const k of ["schemaVersion", "seededAt", "settings", "allocations"])
     if (!same(before[k], after[k])) problems.push(`${k} must not change`);
   const afterById = new Map(after.projects.map((p) => [p.id, p]));
   if (after.projects.length !== before.projects.length) problems.push("projects must not be added or removed");
@@ -607,6 +617,12 @@ function checkInvariants(before, after, scope) {
     problems.push("activity history must not be removed");
   const beforeById = new Map(before.activity.map((e) => [e.id, e]));
   if (after.activity.some((e) => beforeById.has(e.id) && !same(beforeById.get(e.id), e))) problems.push("existing activity must not change");
+  const journalAfter = new Map(after.journal.map((e) => [e.id, e]));
+  if (before.journal.some((e) => !same(e, journalAfter.get(e.id)))) problems.push("journal must not change");
+  const journalBefore = new Set(before.journal.map((e) => e.id));
+  const newJournal = after.journal.filter((e) => !journalBefore.has(e.id));
+  if (newJournal.length && !scope.journalAppend) problems.push("journal must not change");
+  if (newJournal.some((e) => e.source?.type !== "agent" || e.keep)) problems.push("new journal entries must be agent summaries");
   problems.push(...validate(after));
   if (problems.length) fail("NOT_ALLOWED", `Change rejected: ${problems[0]}`, { details: problems });
 }
@@ -825,6 +841,21 @@ function recordEntry(d, projectId, kind, text, now = /* @__PURE__ */ new Date())
   let next = logActivity(d, { projectId, kind, text: text.trim() }, now);
   if (projectId) next = mapProject(next, projectId, (p) => touch(p, now));
   return next;
+}
+var MAX_JOURNAL_TEXT = 4e3;
+function addJournalEntry(d, fields, now = /* @__PURE__ */ new Date()) {
+  const text = fields.text.trim().slice(0, MAX_JOURNAL_TEXT);
+  if (!text) return d;
+  const projectIds = fields.projectIds?.filter((id) => d.projects.some((p) => p.id === id));
+  const e = {
+    id: uid("j"),
+    day: fields.day,
+    at: now.toISOString(),
+    text,
+    ...fields.keep ? { keep: true } : {},
+    ...projectIds?.length ? { projectIds } : {}
+  };
+  return { ...d, journal: [e, ...d.journal] };
 }
 function emptyWeek(weekStart) {
   return { weekStart, focusProjectIds: [], blocks: [], notes: "" };
@@ -1349,7 +1380,59 @@ var complete_milestone = {
     return { data, scope: { projectId: p.id }, changed: [done ? "completed" : "reopened"], result: { projectId: p.id, milestone: milestoneDto(after) } };
   }
 };
-var TOOLS = { list_projects, get_project, get_activity, get_week_plan, add_activity, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone };
+var JOURNAL_BACKDATE_DAYS = 7;
+var MAX_SUMMARIES_PER_DAY = 30;
+var journalDto = (d) => (e) => ({
+  id: e.id,
+  day: e.day,
+  at: e.at,
+  author: e.source ? e.source.agent : "user",
+  text: e.text,
+  ...e.keep ? { starred: true } : {},
+  ...e.projectIds?.length ? { projects: e.projectIds.map((id) => ({ id, name: getProject(d, id)?.name ?? "(deleted project)" })) } : {}
+});
+var get_journal = {
+  kind: "read",
+  description: "The user's daily journal (newest first): summaries agents posted about work they did, and notes the user starred to remember. Defaults to the last 7 days. The user's other notes are private and not returned.",
+  input: {
+    since: { type: "date", optional: true, description: "Inclusive start day (user time zone). Default: 6 days before today." },
+    until: { type: "date", optional: true, description: "Inclusive end day (user time zone)." },
+    limit: { type: "number", min: 1, max: 200, integer: true, optional: true }
+  },
+  run(d, i, ctx) {
+    const today = localDateIn(ctx.timeZone, ctx.now);
+    const since = i.since ?? fromToday(today, -6);
+    const entries = d.journal.filter((e) => e.source || e.keep).filter((e) => e.day >= since && (!i.until || e.day <= i.until)).sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at));
+    return { since, ...i.until ? { until: i.until } : {}, total: entries.length, entries: entries.slice(0, i.limit ?? 50).map(journalDto(d)) };
+  }
+};
+var add_journal_summary = {
+  kind: "write",
+  description: "Post a short summary of work you did for the user to their daily journal, so they can catch up later. One summary per piece of work: what was done, what changed, anything they need to decide or remember. Plain language, a few sentences; don't repeat individual task changes already logged.",
+  input: {
+    text: { type: "string", min: 1, max: TEXT, description: "The summary, in plain language." },
+    projects: { type: "array", of: { type: "string", min: 1, max: TITLE }, max: 5, optional: true, description: "Project ids or names the work was for." },
+    day: { type: "date", optional: true, description: `Journal day (YYYY-MM-DD). Default: today in the user's time zone. At most ${JOURNAL_BACKDATE_DAYS} days back; never in the future.` },
+    request_id: REQUEST_ID
+  },
+  run(d, i, ctx) {
+    const today = localDateIn(ctx.timeZone, ctx.now);
+    const day = i.day ?? today;
+    if (day > today) fail("INVALID_INPUT", `day ${day} is in the future (today is ${today}).`);
+    if (daysBetween(day, today) > JOURNAL_BACKDATE_DAYS) fail("INVALID_INPUT", `day must be within the last ${JOURNAL_BACKDATE_DAYS} days.`);
+    if (d.journal.filter((e2) => e2.day === day && e2.source).length >= MAX_SUMMARIES_PER_DAY)
+      fail("NOT_ALLOWED", `The journal already has ${MAX_SUMMARIES_PER_DAY} agent summaries for ${day}.`);
+    const projectIds = [...new Set((i.projects ?? []).map((p) => resolveProject(d, p).id))];
+    const data = addJournalEntry(d, { day, text: i.text, projectIds }, ctx.now);
+    const e = data.journal[0];
+    return { data, scope: { journalAppend: true }, changed: ["journal"], result: { entry: journalDto(data)({ ...e, source: { type: "agent", agent: ctx.agent } }) } };
+  }
+};
+var fromToday = (today, n) => {
+  const [y, m, dd] = today.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
+};
+var TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone };
 var isToolName = (n) => Object.prototype.hasOwnProperty.call(TOOLS, n);
 function parseToolInput(name, raw) {
   return parseInput(TOOLS[name].input, raw);
@@ -1504,14 +1587,17 @@ var SERVER_INSTRUCTIONS = [
   "Status, priority and deadlines cannot be changed through this integration. Nothing can be deleted.",
   'Some things users call "tasks" are milestones (e.g. a playtesting round). If update_task says a milestone matches, use complete_milestone.',
   "Hobby projects marked lowPressure are never overdue; do not nag about them.",
-  "For write tools, pass a short unique request_id so retries are never applied twice."
+  "For write tools, pass a short unique request_id so retries are never applied twice.",
+  "When you finish a piece of work for the user, post one short plain-language summary with add_journal_summary so they can catch up later."
 ].join("\n");
 var TITLES = {
   list_projects: "List projects",
   get_project: "Get project",
   get_activity: "Get activity history",
   get_week_plan: "Get week plan",
+  get_journal: "Get journal",
   add_activity: "Log note or decision",
+  add_journal_summary: "Post journal summary",
   create_task: "Create task",
   update_task: "Update task",
   update_project: "Update project",
@@ -1552,6 +1638,8 @@ export {
   AgentFailure,
   DEDUPE_WINDOW_MS,
   FROZEN_PROJECT_FIELDS,
+  JOURNAL_BACKDATE_DAYS,
+  MAX_SUMMARIES_PER_DAY,
   SERVER_INFO,
   SERVER_INSTRUCTIONS,
   TOOLS,

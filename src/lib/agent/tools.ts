@@ -4,7 +4,7 @@
 
 import { BLOCK_KINDS } from '../../data/meta.ts';
 import type { ActivityKind, AppData, BlockKind, CategoryId, DueString, Priority, Project, Status, TaskStatus, WeekPlan } from '../../data/types.ts';
-import { addBlock, addMilestone, addTask, completeNextAction, getProject, getWeek, logActivity, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask, updateWeek } from '../ops.ts';
+import { addBlock, addJournalEntry, addMilestone, addTask, completeNextAction, getProject, getWeek, logActivity, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask, updateWeek } from '../ops.ts';
 import { attentionReasons, isOpen, plannedHours } from '../selectors.ts';
 import type { AgentContext } from './attribution.ts';
 import { fail } from './errors.ts';
@@ -490,7 +490,75 @@ const complete_milestone: WriteTool<{ project: string; milestone: string; done?:
   },
 };
 
-export const TOOLS = { list_projects, get_project, get_activity, get_week_plan, add_activity, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone } as const;
+// ── Journal ─────────────────────────────────────────────────────
+// Agents may post short summaries and read summaries plus the user's starred notes. The
+// user's other journal notes are private: never returned, never changed.
+
+/** How far back an agent may date a summary (e.g. posting last night's work after midnight). */
+export const JOURNAL_BACKDATE_DAYS = 7;
+/** Agent summaries allowed per journal day. */
+export const MAX_SUMMARIES_PER_DAY = 30;
+
+const journalDto = (d: AppData) => (e: AppData['journal'][number]) => ({
+  id: e.id,
+  day: e.day,
+  at: e.at,
+  author: e.source ? e.source.agent : 'user',
+  text: e.text,
+  ...(e.keep ? { starred: true } : {}),
+  ...(e.projectIds?.length ? { projects: e.projectIds.map((id) => ({ id, name: getProject(d, id)?.name ?? '(deleted project)' })) } : {}),
+});
+
+const get_journal: ReadTool<{ since?: string; until?: string; limit?: number }> = {
+  kind: 'read',
+  description:
+    "The user's daily journal (newest first): summaries agents posted about work they did, and notes the user starred to remember. Defaults to the last 7 days. The user's other notes are private and not returned.",
+  input: {
+    since: { type: 'date', optional: true, description: 'Inclusive start day (user time zone). Default: 6 days before today.' },
+    until: { type: 'date', optional: true, description: 'Inclusive end day (user time zone).' },
+    limit: { type: 'number', min: 1, max: 200, integer: true, optional: true },
+  },
+  run(d, i, ctx) {
+    const today = localDateIn(ctx.timeZone, ctx.now);
+    const since = i.since ?? fromToday(today, -6);
+    const entries = d.journal
+      .filter((e) => e.source || e.keep)
+      .filter((e) => e.day >= since && (!i.until || e.day <= i.until))
+      .sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at));
+    return { since, ...(i.until ? { until: i.until } : {}), total: entries.length, entries: entries.slice(0, i.limit ?? 50).map(journalDto(d)) };
+  },
+};
+
+const add_journal_summary: WriteTool<{ text: string; projects?: string[]; day?: string }> = {
+  kind: 'write',
+  description:
+    "Post a short summary of work you did for the user to their daily journal, so they can catch up later. One summary per piece of work: what was done, what changed, anything they need to decide or remember. Plain language, a few sentences; don't repeat individual task changes already logged.",
+  input: {
+    text: { type: 'string', min: 1, max: TEXT, description: 'The summary, in plain language.' },
+    projects: { type: 'array', of: { type: 'string', min: 1, max: TITLE }, max: 5, optional: true, description: 'Project ids or names the work was for.' },
+    day: { type: 'date', optional: true, description: `Journal day (YYYY-MM-DD). Default: today in the user's time zone. At most ${JOURNAL_BACKDATE_DAYS} days back; never in the future.` },
+    request_id: REQUEST_ID,
+  },
+  run(d, i, ctx) {
+    const today = localDateIn(ctx.timeZone, ctx.now);
+    const day = i.day ?? today;
+    if (day > today) fail('INVALID_INPUT', `day ${day} is in the future (today is ${today}).`);
+    if (daysBetween(day, today) > JOURNAL_BACKDATE_DAYS) fail('INVALID_INPUT', `day must be within the last ${JOURNAL_BACKDATE_DAYS} days.`);
+    if (d.journal.filter((e) => e.day === day && e.source).length >= MAX_SUMMARIES_PER_DAY)
+      fail('NOT_ALLOWED', `The journal already has ${MAX_SUMMARIES_PER_DAY} agent summaries for ${day}.`);
+    const projectIds = [...new Set((i.projects ?? []).map((p) => resolveProject(d, p).id))];
+    const data = addJournalEntry(d, { day, text: i.text, projectIds }, ctx.now);
+    const e = data.journal[0];
+    return { data, scope: { journalAppend: true }, changed: ['journal'], result: { entry: journalDto(data)({ ...e, source: { type: 'agent', agent: ctx.agent } }) } };
+  },
+};
+
+const fromToday = (today: string, n: number) => {
+  const [y, m, dd] = today.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
+};
+
+export const TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone } as const;
 
 export type ToolName = keyof typeof TOOLS;
 

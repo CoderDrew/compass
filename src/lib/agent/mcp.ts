@@ -16,6 +16,7 @@ export const SERVER_INSTRUCTIONS = [
   'Some things users call "tasks" are milestones (e.g. a playtesting round). If update_task says a milestone matches, use complete_milestone.',
   'Hobby projects marked lowPressure are never overdue; do not nag about them.',
   'For write tools, pass a short unique request_id so retries are never applied twice.',
+  'When you finish a piece of work for the user, post one short plain-language summary with add_journal_summary so they can catch up later.',
 ].join('\n');
 
 const TITLES: Record<ToolName, string> = {
@@ -23,7 +24,9 @@ const TITLES: Record<ToolName, string> = {
   get_project: 'Get project',
   get_activity: 'Get activity history',
   get_week_plan: 'Get week plan',
+  get_journal: 'Get journal',
   add_activity: 'Log note or decision',
+  add_journal_summary: 'Post journal summary',
   create_task: 'Create task',
   update_task: 'Update task',
   update_project: 'Update project',

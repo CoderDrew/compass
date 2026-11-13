@@ -1,7 +1,8 @@
 // Post-conditions every agent write must satisfy before it may be committed. These are
 // the server-side guard rails behind the narrow tool contracts: no deletions, no changes
 // outside the target, no status/priority/deadline edits in the first release. The journal is
-// off-limits to every current tool (journal tools arrive separately).
+// unchanged unless the tool's scope allows appending agent-written entries; existing entries
+// (including the user's own notes) can never be changed or removed.
 
 import type { AppData, Project } from '../../data/types.ts';
 import { validate } from '../storage.ts';
@@ -15,6 +16,8 @@ export interface Scope {
   weekStart?: string;
   /** Projects whose `lastActivity`/`updatedAt` may be touched (e.g. focus changes). */
   touchProjectIds?: string[];
+  /** May append new journal entries (each must be attributed to an agent). */
+  journalAppend?: boolean;
 }
 
 /** Fields an agent may never change on any project in this release. */
@@ -26,7 +29,7 @@ const withoutTouch = (p: Project) => ({ ...p, lastActivity: '', updatedAt: '' })
 export function checkInvariants(before: AppData, after: AppData, scope: Scope): void {
   const problems: string[] = [];
 
-  for (const k of ['schemaVersion', 'seededAt', 'settings', 'allocations', 'journal'] as const)
+  for (const k of ['schemaVersion', 'seededAt', 'settings', 'allocations'] as const)
     if (!same(before[k], after[k])) problems.push(`${k} must not change`);
 
   // Projects: none added or removed; only the target may change.
@@ -70,6 +73,14 @@ export function checkInvariants(before: AppData, after: AppData, scope: Scope): 
     problems.push('activity history must not be removed');
   const beforeById = new Map(before.activity.map((e) => [e.id, e]));
   if (after.activity.some((e) => beforeById.has(e.id) && !same(beforeById.get(e.id), e))) problems.push('existing activity must not change');
+
+  // Journal: existing entries unchanged; new ones only when allowed, and only agent-written.
+  const journalAfter = new Map(after.journal.map((e) => [e.id, e]));
+  if (before.journal.some((e) => !same(e, journalAfter.get(e.id)))) problems.push('journal must not change');
+  const journalBefore = new Set(before.journal.map((e) => e.id));
+  const newJournal = after.journal.filter((e) => !journalBefore.has(e.id));
+  if (newJournal.length && !scope.journalAppend) problems.push('journal must not change');
+  if (newJournal.some((e) => e.source?.type !== 'agent' || e.keep)) problems.push('new journal entries must be agent summaries');
 
   problems.push(...validate(after));
   if (problems.length) fail('NOT_ALLOWED', `Change rejected: ${problems[0]}`, { details: problems });

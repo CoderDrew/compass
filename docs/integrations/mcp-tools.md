@@ -1,6 +1,6 @@
 # Compass MCP tools: contracts
 
-Status: **Phase 1 — decisions recorded.** 11 tools (D3 approved). The command layer behind these tools (`src/lib/agent/`) is implemented and tested in Phase 1; the MCP wiring is Phase 3.
+Status: **Phase 1 — decisions recorded.** 13 tools (D3 approved; journal tools added in DECISIONS #14). The command layer behind these tools (`src/lib/agent/`) is implemented and tested in Phase 1; the MCP wiring is Phase 3.
 
 ## Conventions
 
@@ -50,7 +50,18 @@ Output: `{ entries: [{ id, at, kind, text, projectId?, projectName?, taskId?, so
 Input: `{ week_start?: Monday date }` (default: current week in the user's time zone)
 Output: `{ weekStart, focus: [{id, name}], blocks: [{ id, kind, title, projectId?, day?, hours }], plannedHours, capacityHours, notes, reviewedAt? }`
 
+### `get_journal`
+Input: `{ since?: date, until?: date, limit?: 1–200 (default 50) }`. `since` defaults to 6 days before today, in the user's time zone.
+Output: `{ since, until?, total, entries: [{ id, day, at, author ('user' | agent name), text, starred?, projects?: [{id, name}] }] }`, newest day first.
+Returns **only** agent summaries and notes the user starred. Other user notes are private and never returned.
+
 ## Write tools
+
+### `add_journal_summary`
+Post a short end-of-work summary to the user's daily journal.
+Input: `{ text: string (1–4,000), projects?: string[] (≤ 5, id or name), day?: date (default today; not in the future, ≤ 7 days back), request_id? }`
+Effect: `addJournalEntry` with `source` and `opId` stamped on the journal entry; no activity entry is added. Invariants allow only appending agent-attributed, unstarred entries: existing entries can't change. At most 30 agent summaries per day (`NOT_ALLOWED`). Duplicate detection also checks journal `opId`s.
+Output: `{ ok, entry: { id, day, at, author, text, projects? }, duplicate? }`
 
 ### `add_activity`
 Log progress, notes or decisions ("Log today's Starfall progress …").
