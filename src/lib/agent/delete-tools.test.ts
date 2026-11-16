@@ -191,3 +191,53 @@ describe('restore_deleted', () => {
     expect(store.commits).toHaveLength(commits);
   });
 });
+
+describe('final-review fixes', () => {
+  it('rejects the same block id twice in update_blocks', async () => {
+    const store = memoryPortfolioStore(seed());
+    const id = blockId(dataOf(store), 'Olympus launch');
+    expect(await runTool(store, 'update_week_plan', { week_start: WEEK, update_blocks: [{ id, title: 'A' }, { id, hours: 1 }] }, base())).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_INPUT' },
+    });
+  });
+
+  it('refuses to restore from an older snapshot when a newer delete of the same item exists', async () => {
+    const store = memoryPortfolioStore(seed());
+    const id = taskId(dataOf(store), 'Write lore draft');
+    const t = (ms: number) => base(new Date(NOW.getTime() + ms));
+    await runTool(store, 'delete_task', { project: 'starfall', task: id, request_id: 'd1' }, t(0));
+    const first = dataOf(store).activity[0].id;
+    await runTool(store, 'restore_deleted', { activity_id: first, request_id: 'r1' }, t(1000));
+    await runTool(store, 'delete_task', { project: 'starfall', task: id, request_id: 'd2' }, t(2000));
+    const latest = dataOf(store).activity[0].id;
+    const stale = await runTool(store, 'restore_deleted', { activity_id: first, request_id: 'r2' }, t(3000));
+    expect(stale).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } });
+    if (!stale.ok) expect(stale.error.message).toContain(latest);
+    expect(await runTool(store, 'restore_deleted', { activity_id: latest, request_id: 'r3' }, t(4000))).toMatchObject({ ok: true });
+  });
+
+  it('a restored block drops a project that no longer exists', async () => {
+    const store = memoryPortfolioStore(seed());
+    const id = blockId(dataOf(store), 'Olympus launch');
+    await runTool(store, 'update_week_plan', { week_start: WEEK, remove_blocks: [id] }, base());
+    const activityId = dataOf(store).activity[0].id;
+    store.externalWrite((d) => deleteProject(d, 'starfall', NOW));
+    expect(await runTool(store, 'restore_deleted', { activity_id: activityId }, base())).toMatchObject({ ok: true });
+    const b = blocks(dataOf(store)).find((x) => x.id === id)!;
+    expect(b.title).toBe('Olympus launch');
+    expect(b.projectId).toBeUndefined();
+  });
+
+  it('delete → restore → delete again without request_id within 10 minutes really deletes', async () => {
+    const store = memoryPortfolioStore(seed());
+    const id = taskId(dataOf(store), 'Write lore draft');
+    const t = (ms: number) => base(new Date(NOW.getTime() + ms));
+    await runTool(store, 'delete_task', { project: 'starfall', task: id }, t(0));
+    await runTool(store, 'restore_deleted', { activity_id: dataOf(store).activity[0].id }, t(60_000));
+    const again = await runTool(store, 'delete_task', { project: 'starfall', task: id }, t(120_000));
+    expect(again).toMatchObject({ ok: true });
+    expect(again).not.toMatchObject({ duplicate: true });
+    expect(getProject(dataOf(store), 'starfall')!.tasks.some((x) => x.id === id)).toBe(false);
+  });
+});

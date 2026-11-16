@@ -3,7 +3,7 @@
 // No I/O here — `run.ts` adds loading, invariants, attribution and conflict-safe commit.
 
 import { BLOCK_KINDS } from '../../data/meta.ts';
-import type { ActivityKind, AppData, BlockKind, CategoryId, DueString, Priority, Project, Status, TaskStatus, WeekPlan } from '../../data/types.ts';
+import type { ActivityKind, AppData, BlockKind, CategoryId, DueString, PlanBlock, Priority, Project, Status, TaskStatus, WeekPlan } from '../../data/types.ts';
 import { addBlock, addJournalEntry, addMilestone, addTask, completeNextAction, deleteMilestone, deleteTask, getProject, removeBlock, getWeek, logActivity, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask, updateWeek } from '../ops.ts';
 import { attentionReasons, isOpen, plannedHours } from '../selectors.ts';
 import type { AgentContext } from './attribution.ts';
@@ -423,6 +423,8 @@ const update_week_plan: WriteTool<UpdateWeekInput> = {
     const week = i.week_start ?? currentWeekStart(ctx.timeZone, ctx.now);
     const removeIds = [...new Set(i.remove_blocks ?? [])];
     if ((i.update_blocks ?? []).some((u) => removeIds.includes(u.id))) fail('INVALID_INPUT', 'A block cannot be both updated and removed in one call.');
+    const updateIds = (i.update_blocks ?? []).map((u) => u.id);
+    if (new Set(updateIds).size !== updateIds.length) fail('INVALID_INPUT', 'List each block at most once in update_blocks; combine its changes into one entry.');
     if ((i.update_blocks ?? []).some((u) => u.day !== undefined && u.unschedule)) fail('INVALID_INPUT', 'Use either day or unschedule for a block, not both.');
     const findBlock = (id: string) => getWeek(d, week).blocks.find((b) => b.id === id) ?? fail('NOT_FOUND', `No block "${id}" in the week of ${week}. Use get_week_plan for block ids.`);
     if (i.notes !== undefined && i.append_notes !== undefined) fail('INVALID_INPUT', 'Use either notes or append_notes, not both.');
@@ -648,11 +650,17 @@ const restore_deleted: WriteTool<{ activity_id: string }> = {
     const entry = d.activity.find((e) => e.id === i.activity_id);
     const snap = entry?.deleted ?? fail('NOT_FOUND', `Activity entry "${i.activity_id}" has nothing to restore (no delete snapshot, or it has aged out).`);
     const exists = () => fail('NOT_ALLOWED', `That ${snap.type} already exists; it was restored already or never removed.`);
+    // Activity is newest-first: a later delete of the same item holds the more recent version.
+    const newer = d.activity.slice(0, d.activity.indexOf(entry!)).find((e) => e.deleted?.type === snap.type && e.deleted.item.id === snap.item.id);
+    if (newer) fail('NOT_ALLOWED', `This ${snap.type} was deleted again later; restore the newer delete "${newer.id}" instead so recent changes aren't lost.`);
     if (snap.type === 'block') {
       const w = d.weeks[snap.weekStart] ?? fail('NOT_ALLOWED', `The week of ${snap.weekStart} no longer exists, so the block cannot be restored.`);
       if (w.blocks.some((b) => b.id === snap.item.id)) exists();
-      let data = updateWeek(d, snap.weekStart, (x) => ({ ...x, blocks: [...x.blocks, snap.item] }));
-      data = logActivity(data, { ...(snap.item.projectId ? { projectId: snap.item.projectId } : {}), kind: 'focus', text: `Restored block "${clip(snap.item.title, 60)}" to week of ${snap.weekStart}` }, ctx.now);
+      // Drop a project deleted since, as deleteProject does for blocks it leaves behind.
+      const { projectId: oldProject, ...rest } = snap.item;
+      const item: PlanBlock = oldProject && getProject(d, oldProject) ? snap.item : rest;
+      let data = updateWeek(d, snap.weekStart, (x) => ({ ...x, blocks: [...x.blocks, item] }));
+      data = logActivity(data, { ...(item.projectId ? { projectId: item.projectId } : {}), kind: 'focus', text: `Restored block "${clip(snap.item.title, 60)}" to week of ${snap.weekStart}` }, ctx.now);
       return { data, scope: { weekStart: snap.weekStart }, changed: ['block'], result: { restored: { type: 'block', id: snap.item.id, title: snap.item.title }, weekStart: snap.weekStart } };
     }
     const p = getProject(d, snap.projectId) ?? fail('NOT_ALLOWED', `The project this ${snap.type} belonged to no longer exists, so it cannot be restored.`);
