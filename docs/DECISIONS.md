@@ -32,7 +32,7 @@ Supabase OAuth does not support custom scopes, so access is limited in three lay
 **Why:** the agent is semi-trusted. It acts for the user but can be steered by prompt injection.
 
 ### 7. No status, priority or deadline changes through tools (D2) — Built
-Tools cannot change status, priority or deadlines, and nothing can be deleted. Schemas and invariants both enforce this.
+Tools cannot change status, priority or deadlines. Schemas and invariants both enforce this. (Originally nothing could be deleted either; #15 relaxed that for tasks, milestones and week-plan blocks.)
 **Why:** these are the judgment calls the dashboard exists to protect. They stay with the user.
 
 ### 8. Milestone tools (D3) — Built
@@ -56,6 +56,10 @@ The plan started with ChatGPT, but custom MCP servers in ChatGPT need a Business
 ### 14. Daily journal, with agent summaries — Built
 A per-day journal kept apart from the capped activity log. The user writes notes and stars the ones to remember. Agents post short end-of-work summaries with `add_journal_summary` and read them with `get_journal`, bringing the server to 13 tools. Agents can only append attributed summaries, dated today or up to 7 days back, at most 30 per day. They never edit, delete or star anything. `get_journal` returns agent summaries and starred notes only; the user's other notes stay private. Summaries are attributed and de-duplicated on the journal entry itself and are not copied into Activity.
 **Why:** the activity log records individual changes, not the story of a day. Keeping unstarred notes out of agent reach limits what prompt injection can see or plant, and agents don't need them to write a summary.
+
+### 15. Agent deletes with restore — Built
+Agents can delete tasks (`delete_task`) and milestones (`delete_milestone`), and remove or edit existing week-plan blocks (`remove_blocks` / `update_blocks` on `update_week_plan`), bringing the server to 16 tools. Every delete writes an attributed activity entry carrying a snapshot of the removed item, and `restore_deleted` puts it back with its original id. Snapshots age out with the 2,000-entry activity cap. Invariants allow a removal only when the tool's scope names that id and a new entry snapshots it. The deleting tools carry `destructiveHint: true` so clients confirm them. Projects, weeks, activity and the journal still cannot be deleted, and status, priority and deadlines stay frozen (#7). Spec: `docs/superpowers/specs/2026-11-15-agent-deletes-design.md`.
+**Why:** re-planning the week from a phone agent (2026-11-15) stalled because an obsolete block couldn't be removed or a block retitled, forcing a switch to the website. Snapshots plus restore keep a misheard or prompt-injected delete recoverable from the same chat.
 
 ## Planned
 

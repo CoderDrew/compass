@@ -32,7 +32,7 @@ Claude (custom connector)
 | **Database** | `supabase/migrations/` | Tables, row-level security and the server-only functions `compass_mcp_authorize`, `compass_mcp_read`, `compass_mcp_commit` and `compass_mcp_log`. |
 | **MCP server** | `supabase/functions/compass-mcp/` | Supabase Edge Function that verifies the caller, runs one tool, and commits through the server-only functions. |
 
-### MCP tools (11)
+### MCP tools (16)
 
 | Read | Write |
 | --- | --- |
@@ -40,9 +40,12 @@ Claude (custom connector)
 | `get_project` — one project with tasks and milestones | `create_task` |
 | `get_activity` — activity log by project and date range | `update_task` — rename, reprioritise, finish or reopen |
 | `get_week_plan` — focus, blocks and capacity for a week | `update_project` — next action, blockers, waiting-on, notes |
-| | `update_week_plan` — change focus projects, add time blocks and notes |
+| `get_journal` — agent summaries and starred notes | `update_week_plan` — change focus projects, notes; add, edit and remove time blocks |
 | | `create_milestone` |
 | | `complete_milestone` |
+| | `delete_task` / `delete_milestone` — snapshotted, restorable |
+| | `restore_deleted` — bring back a deleted task, milestone or block |
+| | `add_journal_summary` |
 
 Full contracts: [docs/integrations/mcp-tools.md](docs/integrations/mcp-tools.md).
 
