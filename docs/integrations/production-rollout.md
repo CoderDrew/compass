@@ -27,3 +27,4 @@ After step 6: ask Claude one read and one small write, and confirm "via Claude" 
 | 2026-11-11 | 2 · Migrations (production) | Applied by you. Verified: all 4 tables exist; `anon` denied (`42501`) on every table and on `compass_mcp_read`. Staging Site URL reverted. |
 | 2026-11-11 | 3 · OAuth server (production) | Enabled by you; metadata live (DCR, S256, `offline_access`). |
 | 2026-11-11 | 4 · Function deploy (production) | Deployed. Metadata 200 with production issuer; unauthenticated → 401 challenge; forged token → 401 `invalid_token`. |
+| 2026-11-15 | Redeploy · agent deletes and restore (PR #4, DECISIONS #15) | Redeployed `compass-mcp` from `main` at `f2c76c0` (16 tools). Smoke tests: metadata 200 with production issuer; unauthenticated → 401 challenge; forged token → 401 `invalid_token`. New tools not yet checked through a connected agent. |
