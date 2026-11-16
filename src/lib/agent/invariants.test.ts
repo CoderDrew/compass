@@ -31,9 +31,9 @@ function rejection(fn: () => void): string[] {
 
 describe('checkInvariants — scoped removals', () => {
   const d = base();
-  const task = getProject(d, 'starfall')!.tasks.at(-1)!;
-  const ms = getProject(d, 'starfall')!.milestones.at(-1)!;
-  const block = getWeek(d, WEEK).blocks.at(-1)!;
+  const task = getProject(d, 'starfall')!.tasks.slice(-1)[0];
+  const ms = getProject(d, 'starfall')!.milestones.slice(-1)[0];
+  const block = getWeek(d, WEEK).blocks.slice(-1)[0];
 
   it('rejects removing a task not named in scope', () => {
     const after = snap(deleteTask(d, 'starfall', task.id, NOW), { type: 'task', projectId: 'starfall', item: task });
@@ -77,7 +77,7 @@ describe('checkInvariants — scoped removals', () => {
 describe('validate — deleted snapshots', () => {
   it('accepts an activity entry with a deleted snapshot and rejects a malformed one', () => {
     const d = base();
-    const task = getProject(d, 'starfall')!.tasks.at(-1)!;
+    const task = getProject(d, 'starfall')!.tasks.slice(-1)[0];
     expect(validate(snap(d, { type: 'task', projectId: 'starfall', item: task }))).toEqual([]);
     const bad = logActivity(d, { kind: 'task', text: 'x' }, NOW);
     (bad.activity[0] as unknown as Record<string, unknown>).deleted = { type: 'nope', item: { id: 'x' } };

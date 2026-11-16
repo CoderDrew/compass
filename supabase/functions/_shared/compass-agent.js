@@ -467,6 +467,7 @@ function migrate(raw) {
 var isObj = (x) => typeof x === "object" && x !== null && !Array.isArray(x);
 var isStr = (x) => typeof x === "string";
 var optStr = (x) => x === void 0 || isStr(x);
+var validSnapshot = (x) => isObj(x) && isObj(x.item) && isStr(x.item.id) && ((x.type === "task" || x.type === "milestone") && isStr(x.projectId) || x.type === "block" && isStr(x.weekStart));
 var optDue = (x) => x === void 0 || x === "" || isValidDue(x);
 var isDay = (x) => isStr(x) && /^\d{4}-\d{2}-\d{2}$/.test(x);
 function validate(data) {
@@ -511,6 +512,7 @@ function validate(data) {
     if (!optStr(a.projectId) || !optStr(a.taskId) || !optStr(a.opId)) errs.push(`Activity entry #${i + 1} has an invalid reference.`);
     if (a.source !== void 0 && !(isObj(a.source) && a.source.type === "agent" && isStr(a.source.agent) && optStr(a.source.clientId)))
       errs.push(`Activity entry #${i + 1} has an invalid source.`);
+    if (a.deleted !== void 0 && !validSnapshot(a.deleted)) errs.push(`Activity entry #${i + 1} has an invalid deleted snapshot.`);
   });
   if (data.journal !== void 0 && !Array.isArray(data.journal)) errs.push('"journal" must be a list.');
   else
@@ -579,6 +581,14 @@ var same = (a, b) => stableStringify(a) === stableStringify(b);
 var withoutTouch = (p) => ({ ...p, lastActivity: "", updatedAt: "" });
 function checkInvariants(before, after, scope) {
   const problems = [];
+  const snapshots = new Set(
+    after.activity.filter((e) => e.deleted && !before.activity.some((x) => x.id === e.id)).map((e) => `${e.deleted.type}:${e.deleted.item.id}`)
+  );
+  const removalOk = (type, id, allowed) => {
+    if (!allowed?.includes(id)) return false;
+    if (!snapshots.has(`${type}:${id}`)) problems.push(`${type} ${id} must be snapshotted before removal`);
+    return true;
+  };
   for (const k of ["schemaVersion", "seededAt", "settings", "allocations"])
     if (!same(before[k], after[k])) problems.push(`${k} must not change`);
   const afterById = new Map(after.projects.map((p) => [p.id, p]));
@@ -592,9 +602,9 @@ function checkInvariants(before, after, scope) {
     if (b.id === scope.projectId) {
       for (const f of FROZEN_PROJECT_FIELDS) if (!same(b[f], a[f])) problems.push(`${b.name}: ${f} must not change`);
       const tasksAfter = new Set(a.tasks.map((t) => t.id));
-      if (b.tasks.some((t) => !tasksAfter.has(t.id))) problems.push(`${b.name}: tasks must not be removed`);
+      if (b.tasks.some((t) => !tasksAfter.has(t.id) && !removalOk("task", t.id, scope.removeTaskIds))) problems.push(`${b.name}: tasks must not be removed`);
       const msAfter = new Set(a.milestones.map((m) => m.id));
-      if (b.milestones.some((m) => !msAfter.has(m.id))) problems.push(`${b.name}: milestones must not be removed`);
+      if (b.milestones.some((m) => !msAfter.has(m.id) && !removalOk("milestone", m.id, scope.removeMilestoneIds))) problems.push(`${b.name}: milestones must not be removed`);
     } else if (scope.touchProjectIds?.includes(b.id)) {
       if (!same(withoutTouch(b), withoutTouch(a))) problems.push(`${b.name} must not change`);
     } else if (!same(b, a)) {
@@ -606,7 +616,7 @@ function checkInvariants(before, after, scope) {
     else if (k !== scope.weekStart && !same(w, after.weeks[k])) problems.push(`week ${k} must not change`);
     else if (k === scope.weekStart) {
       const ids = new Set(after.weeks[k].blocks.map((x) => x.id));
-      if (w.blocks.some((x) => !ids.has(x.id))) problems.push(`week ${k}: blocks must not be removed`);
+      if (w.blocks.some((x) => !ids.has(x.id) && !removalOk("block", x.id, scope.removeBlockIds))) problems.push(`week ${k}: blocks must not be removed`);
     }
   }
   for (const k of Object.keys(after.weeks)) if (!before.weeks[k] && k !== scope.weekStart) problems.push(`week ${k} must not be created`);
