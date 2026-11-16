@@ -4,7 +4,7 @@
 
 import { BLOCK_KINDS } from '../../data/meta.ts';
 import type { ActivityKind, AppData, BlockKind, CategoryId, DueString, Priority, Project, Status, TaskStatus, WeekPlan } from '../../data/types.ts';
-import { addBlock, addJournalEntry, addMilestone, addTask, completeNextAction, deleteMilestone, deleteTask, getProject, getWeek, logActivity, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask, updateWeek } from '../ops.ts';
+import { addBlock, addJournalEntry, addMilestone, addTask, completeNextAction, deleteMilestone, deleteTask, getProject, removeBlock, getWeek, logActivity, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask, updateWeek } from '../ops.ts';
 import { attentionReasons, isOpen, plannedHours } from '../selectors.ts';
 import type { AgentContext } from './attribution.ts';
 import { fail } from './errors.ts';
@@ -370,12 +370,14 @@ interface UpdateWeekInput {
   notes?: string;
   append_notes?: string;
   add_blocks?: { title: string; project?: string; kind?: BlockKind; hours: number; day?: number }[];
+  update_blocks?: { id: string; title?: string; hours?: number; day?: number; unschedule?: boolean; project?: string | null; kind?: BlockKind }[];
+  remove_blocks?: string[];
 }
 
 const update_week_plan: WriteTool<UpdateWeekInput> = {
   kind: 'write',
   description:
-    "Change a week's plan: add/remove focus projects, set or append notes, or add planning blocks. Blocks without a day stay unscheduled — Compass never auto-schedules. Existing blocks can't be removed here.",
+    "Change a week's plan: add/remove focus projects, set or append notes, add planning blocks, or edit and remove existing blocks by id (ids come from get_week_plan). Blocks without a day stay unscheduled — Compass never auto-schedules. Removed blocks can be brought back with restore_deleted.",
   input: {
     week_start: { type: 'monday', optional: true, description: 'Monday of the week; defaults to the current week.' },
     add_focus: { type: 'array', of: { type: 'string', min: 1, max: TITLE }, max: 10, optional: true, description: 'Project ids or names.' },
@@ -397,10 +399,32 @@ const update_week_plan: WriteTool<UpdateWeekInput> = {
         },
       },
     },
+    update_blocks: {
+      type: 'array',
+      max: 10,
+      optional: true,
+      of: {
+        type: 'object',
+        fields: {
+          id: { type: 'string', min: 1, max: 64, description: 'Block id from get_week_plan.' },
+          title: { type: 'string', min: 1, max: TITLE, optional: true },
+          hours: { type: 'number', min: 0.25, max: 12, optional: true },
+          day: { type: 'number', min: 0, max: 6, integer: true, optional: true, description: '0 = Monday … 6 = Sunday.' },
+          unschedule: { type: 'boolean', optional: true, description: 'true takes the block off its day (unscheduled).' },
+          project: { type: 'string', min: 1, max: TITLE, optional: true, nullable: true, description: 'Project id or name; null detaches the block from its project.' },
+          kind: { type: 'enum', values: BLOCK_KINDS.map((b) => b.id), optional: true },
+        },
+      },
+    },
+    remove_blocks: { type: 'array', of: { type: 'string', min: 1, max: 64 }, max: 10, optional: true, description: 'Block ids from get_week_plan.' },
     request_id: REQUEST_ID,
   },
   run(d, i, ctx) {
     const week = i.week_start ?? currentWeekStart(ctx.timeZone, ctx.now);
+    const removeIds = [...new Set(i.remove_blocks ?? [])];
+    if ((i.update_blocks ?? []).some((u) => removeIds.includes(u.id))) fail('INVALID_INPUT', 'A block cannot be both updated and removed in one call.');
+    if ((i.update_blocks ?? []).some((u) => u.day !== undefined && u.unschedule)) fail('INVALID_INPUT', 'Use either day or unschedule for a block, not both.');
+    const findBlock = (id: string) => getWeek(d, week).blocks.find((b) => b.id === id) ?? fail('NOT_FOUND', `No block "${id}" in the week of ${week}. Use get_week_plan for block ids.`);
     if (i.notes !== undefined && i.append_notes !== undefined) fail('INVALID_INPUT', 'Use either notes or append_notes, not both.');
     let data = d;
     const changed: string[] = [];
@@ -433,8 +457,27 @@ const update_week_plan: WriteTool<UpdateWeekInput> = {
       data = logActivity(data, { ...(p ? { projectId: p.id } : {}), kind: 'focus', text: `Planned ${b.hours}h "${clip(b.title, 60)}" for week of ${week}${b.day === undefined ? ' (unscheduled)' : ''}` }, ctx.now);
       changed.push('block');
     }
+    for (const u of i.update_blocks ?? []) {
+      const b = findBlock(u.id);
+      const p = u.project ? resolveProject(data, u.project) : undefined;
+      const { day: _day, projectId: _pid, ...rest } = b;
+      const day = u.unschedule ? undefined : (u.day ?? b.day);
+      const projectId = u.project === null ? undefined : (p?.id ?? b.projectId);
+      const next = { ...rest, title: u.title ?? b.title, hours: u.hours ?? b.hours, kind: u.kind ?? b.kind, ...(projectId ? { projectId } : {}), ...(day !== undefined ? { day } : {}) };
+      const diffs = (['title', 'hours', 'kind', 'day', 'projectId'] as const).filter((k) => next[k as keyof typeof next] !== b[k]);
+      if (!diffs.length) continue;
+      data = updateWeek(data, week, (w) => ({ ...w, blocks: w.blocks.map((x) => (x.id === b.id ? next : x)) }));
+      data = logActivity(data, { ...(projectId ? { projectId } : {}), kind: 'focus', text: `Changed block "${clip(b.title, 60)}" in week of ${week}: ${diffs.join(', ')}` }, ctx.now);
+      changed.push(`block~${b.id}`);
+    }
+    for (const id of removeIds) {
+      const b = findBlock(id);
+      data = removeBlock(data, week, id);
+      data = logActivity(data, { ...(b.projectId ? { projectId: b.projectId } : {}), kind: 'focus', text: `Removed block "${clip(b.title, 60)}" from week of ${week}`, deleted: { type: 'block', weekStart: week, item: b } }, ctx.now);
+      changed.push(`block-${id}`);
+    }
     if (!changed.length) fail('INVALID_INPUT', `Nothing to change in the week of ${week}.`);
-    return { data, scope: { weekStart: week }, changed, result: { changed, week: weekView(data, getWeek(data, week)) } };
+    return { data, scope: { weekStart: week, ...(removeIds.length ? { removeBlockIds: removeIds } : {}) }, changed, result: { changed, week: weekView(data, getWeek(data, week)) } };
   },
 };
 

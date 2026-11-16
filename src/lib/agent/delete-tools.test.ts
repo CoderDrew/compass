@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createSeedData } from '../../data/seed';
 import type { AppData } from '../../data/types';
-import { addBlock, addMilestone, addTask, getProject } from '../ops';
+import { addBlock, addMilestone, addTask, getProject, getWeek } from '../ops';
 import type { AgentContext } from './attribution';
 import { TOOL_SPECS } from './mcp';
 import { memoryPortfolioStore, runTool } from './run';
@@ -20,6 +20,8 @@ function seed(): AppData {
   d = addBlock(d, WEEK, { kind: 'focus', title: 'Olympus launch', hours: 3, day: 4, projectId: 'starfall' });
   return d;
 }
+const blocks = (d: AppData) => getWeek(d, WEEK).blocks;
+const blockId = (d: AppData, title: string) => blocks(d).find((b) => b.title === title)!.id;
 const taskId = (d: AppData, title: string) => getProject(d, 'starfall')!.tasks.find((t) => t.title === title)!.id;
 
 describe('delete_task / delete_milestone', () => {
@@ -69,5 +71,65 @@ describe('MCP annotations', () => {
   it('marks only the deleting tools as destructive', () => {
     const destructive = TOOL_SPECS.filter((t) => t.annotations.destructiveHint).map((t) => t.name).sort();
     expect(destructive).toEqual(['delete_milestone', 'delete_task', 'update_week_plan']);
+  });
+});
+
+describe('update_week_plan — remove and edit blocks', () => {
+  const wk = { week_start: WEEK };
+
+  it('re-plans a week in one call: removes one block and retitles another', async () => {
+    const store = memoryPortfolioStore(seed());
+    const deploy = blockId(dataOf(store), 'Deploy Olympus');
+    const launch = blockId(dataOf(store), 'Olympus launch');
+    const r = await runTool(store, 'update_week_plan', { ...wk, remove_blocks: [deploy], update_blocks: [{ id: launch, title: 'Olympus content', hours: 1 }] }, base());
+    expect(r.ok).toBe(true);
+    const d = dataOf(store);
+    expect(blocks(d).map((b) => b.id)).not.toContain(deploy);
+    expect(blocks(d).find((b) => b.id === launch)).toMatchObject({ title: 'Olympus content', hours: 1, day: 4 });
+    const removed = d.activity.find((e) => e.text === 'Removed block "Deploy Olympus" from week of 2026-11-09');
+    expect(removed).toMatchObject({ kind: 'focus', deleted: { type: 'block', weekStart: WEEK, item: { id: deploy, title: 'Deploy Olympus', hours: 2, day: 3 } } });
+    expect(d.activity.some((e) => e.text.startsWith('Changed block "Olympus launch"'))).toBe(true);
+  });
+
+  it('an unknown block id is NOT_FOUND naming the id, and nothing changes', async () => {
+    const store = memoryPortfolioStore(seed());
+    for (const input of [{ remove_blocks: ['b-nope'] }, { update_blocks: [{ id: 'b-nope', title: 'x' }] }]) {
+      const r = await runTool(store, 'update_week_plan', { ...wk, ...input }, base());
+      expect(r).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+      if (!r.ok) expect(r.error.message).toContain('b-nope');
+    }
+    expect(store.commits).toHaveLength(0);
+  });
+
+  it('the same id in remove_blocks and update_blocks is INVALID_INPUT', async () => {
+    const store = memoryPortfolioStore(seed());
+    const id = blockId(dataOf(store), 'Deploy Olympus');
+    expect(await runTool(store, 'update_week_plan', { ...wk, remove_blocks: [id], update_blocks: [{ id, title: 'x' }] }, base())).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_INPUT' },
+    });
+  });
+
+  it('unschedule clears the day, project null clears the project, and day + unschedule is rejected', async () => {
+    const store = memoryPortfolioStore(seed());
+    const id = blockId(dataOf(store), 'Olympus launch');
+    expect(await runTool(store, 'update_week_plan', { ...wk, update_blocks: [{ id, day: 2, unschedule: true }] }, base())).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_INPUT' },
+    });
+    expect(await runTool(store, 'update_week_plan', { ...wk, update_blocks: [{ id, unschedule: true, project: null }] }, base())).toMatchObject({ ok: true });
+    const b = blocks(dataOf(store)).find((x) => x.id === id)!;
+    expect(b.day).toBeUndefined();
+    expect(b.projectId).toBeUndefined();
+  });
+
+  it('an update that changes nothing is not a change', async () => {
+    const store = memoryPortfolioStore(seed());
+    const id = blockId(dataOf(store), 'Olympus launch');
+    expect(await runTool(store, 'update_week_plan', { ...wk, update_blocks: [{ id, title: 'Olympus launch', hours: 3 }] }, base())).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_INPUT' },
+    });
+    expect(store.commits).toHaveLength(0);
   });
 });
