@@ -110,7 +110,14 @@ export interface ActivityEntry {
   source?: ActivitySource;
   /** Stable operation id shared by all entries from one external operation (dedupe/troubleshooting). */
   opId?: string;
+  /** What an agent deleted, kept so `restore_deleted` can bring it back (ages out with the activity cap). */
+  deleted?: DeletedSnapshot;
 }
+
+export type DeletedSnapshot =
+  | { type: 'task'; projectId: string; item: Task }
+  | { type: 'milestone'; projectId: string; item: Milestone }
+  | { type: 'block'; weekStart: string; item: PlanBlock };
 
 /**
  * One entry in the daily journal: something worth remembering, written by Drew in the app,

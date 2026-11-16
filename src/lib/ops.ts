@@ -2,7 +2,7 @@
 // Meaningful changes append to the activity log automatically.
 
 import { statusLabel } from '../data/meta.ts';
-import type { ActivityEntry, ActivityKind, AppData, JournalEntry, Milestone, PlanBlock, Project, Settings, Task, WeekPlan } from '../data/types.ts';
+import type { ActivityEntry, ActivityKind, AppData, DeletedSnapshot, JournalEntry, Milestone, PlanBlock, Project, Settings, Task, WeekPlan } from '../data/types.ts';
 
 export function uid(prefix = 'id'): string {
   const c = globalThis.crypto as Crypto | undefined;
@@ -12,7 +12,7 @@ export function uid(prefix = 'id'): string {
 
 const MAX_ACTIVITY = 2000;
 
-export function logActivity(d: AppData, entry: { projectId?: string; kind: ActivityKind; text: string }, now = new Date()): AppData {
+export function logActivity(d: AppData, entry: { projectId?: string; kind: ActivityKind; text: string; deleted?: DeletedSnapshot }, now = new Date()): AppData {
   const e: ActivityEntry = { id: uid('a'), at: now.toISOString(), ...entry };
   return { ...d, activity: [e, ...d.activity].slice(0, MAX_ACTIVITY) };
 }
