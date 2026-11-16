@@ -4,7 +4,7 @@
 
 import { BLOCK_KINDS } from '../../data/meta.ts';
 import type { ActivityKind, AppData, BlockKind, CategoryId, DueString, Priority, Project, Status, TaskStatus, WeekPlan } from '../../data/types.ts';
-import { addBlock, addJournalEntry, addMilestone, addTask, completeNextAction, getProject, getWeek, logActivity, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask, updateWeek } from '../ops.ts';
+import { addBlock, addJournalEntry, addMilestone, addTask, completeNextAction, deleteMilestone, deleteTask, getProject, getWeek, logActivity, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask, updateWeek } from '../ops.ts';
 import { attentionReasons, isOpen, plannedHours } from '../selectors.ts';
 import type { AgentContext } from './attribution.ts';
 import { fail } from './errors.ts';
@@ -558,7 +558,43 @@ const fromToday = (today: string, n: number) => {
   return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
 };
 
-export const TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone } as const;
+// ── Deletes (each snapshotted so restore_deleted can bring it back) ──
+
+const delete_task: WriteTool<{ project: string; task: string }> = {
+  kind: 'write',
+  description: 'Delete a task. Only delete what the user asked for. The deleted task can be brought back with restore_deleted.',
+  input: {
+    project: { type: 'string', min: 1, max: TITLE, description: 'Project id or name.' },
+    task: { type: 'string', min: 1, max: TITLE, description: 'Task id or title.' },
+    request_id: REQUEST_ID,
+  },
+  run(d, i, ctx) {
+    const p = resolveProject(d, i.project);
+    const t = resolveTask(p, i.task);
+    let data = deleteTask(d, p.id, t.id, ctx.now);
+    data = logActivity(data, { projectId: p.id, kind: 'task', text: `Deleted task: ${clip(t.title, 80)}`, deleted: { type: 'task', projectId: p.id, item: t } }, ctx.now);
+    return { data, scope: { projectId: p.id, removeTaskIds: [t.id] }, taskId: t.id, changed: ['task'], result: { projectId: p.id, deleted: { id: t.id, title: t.title }, activityId: data.activity[0].id } };
+  },
+};
+
+const delete_milestone: WriteTool<{ project: string; milestone: string }> = {
+  kind: 'write',
+  description: 'Delete a milestone. Only delete what the user asked for. The deleted milestone can be brought back with restore_deleted.',
+  input: {
+    project: { type: 'string', min: 1, max: TITLE, description: 'Project id or name.' },
+    milestone: { type: 'string', min: 1, max: TITLE, description: 'Milestone id or title.' },
+    request_id: REQUEST_ID,
+  },
+  run(d, i, ctx) {
+    const p = resolveProject(d, i.project);
+    const m = resolveMilestone(p, i.milestone);
+    let data = deleteMilestone(d, p.id, m.id, ctx.now);
+    data = logActivity(data, { projectId: p.id, kind: 'milestone', text: `Deleted milestone: ${clip(m.title, 80)}`, deleted: { type: 'milestone', projectId: p.id, item: m } }, ctx.now);
+    return { data, scope: { projectId: p.id, removeMilestoneIds: [m.id] }, changed: ['milestone'], result: { projectId: p.id, deleted: { id: m.id, title: m.title }, activityId: data.activity[0].id } };
+  },
+};
+
+export const TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone, delete_task, delete_milestone } as const;
 
 export type ToolName = keyof typeof TOOLS;
 

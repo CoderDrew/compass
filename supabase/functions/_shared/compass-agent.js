@@ -829,6 +829,9 @@ function updateTask(d, projectId, taskId, patch, now = /* @__PURE__ */ new Date(
   if (completing) next = logActivity(next, { projectId, kind: "task", text: `Finished task: ${trim(merged.title)}` }, now);
   return next;
 }
+function deleteTask(d, projectId, taskId, now = /* @__PURE__ */ new Date()) {
+  return mapProject(d, projectId, (p) => touch({ ...p, tasks: p.tasks.filter((t) => t.id !== taskId) }, now));
+}
 function addMilestone(d, projectId, fields, now = /* @__PURE__ */ new Date()) {
   const m = { id: uid("m"), done: false, ...fields };
   return mapProject(d, projectId, (p) => touch({ ...p, milestones: [...p.milestones, m] }, now));
@@ -846,6 +849,9 @@ function updateMilestone(d, projectId, mId, patch, now = /* @__PURE__ */ new Dat
   let next = mapProject(d, projectId, (x) => touch({ ...x, milestones: x.milestones.map((m) => m.id === mId ? merged : m) }, now));
   if (completing) next = logActivity(next, { projectId, kind: "milestone", text: `Completed milestone: ${trim(merged.title)}` }, now);
   return next;
+}
+function deleteMilestone(d, projectId, mId, now = /* @__PURE__ */ new Date()) {
+  return mapProject(d, projectId, (p) => touch({ ...p, milestones: p.milestones.filter((m) => m.id !== mId) }, now));
 }
 function recordEntry(d, projectId, kind, text, now = /* @__PURE__ */ new Date()) {
   let next = logActivity(d, { projectId, kind, text: text.trim() }, now);
@@ -1442,7 +1448,39 @@ var fromToday = (today, n) => {
   const [y, m, dd] = today.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
 };
-var TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone };
+var delete_task = {
+  kind: "write",
+  description: "Delete a task. Only delete what the user asked for. The deleted task can be brought back with restore_deleted.",
+  input: {
+    project: { type: "string", min: 1, max: TITLE, description: "Project id or name." },
+    task: { type: "string", min: 1, max: TITLE, description: "Task id or title." },
+    request_id: REQUEST_ID
+  },
+  run(d, i, ctx) {
+    const p = resolveProject(d, i.project);
+    const t = resolveTask(p, i.task);
+    let data = deleteTask(d, p.id, t.id, ctx.now);
+    data = logActivity(data, { projectId: p.id, kind: "task", text: `Deleted task: ${clip(t.title, 80)}`, deleted: { type: "task", projectId: p.id, item: t } }, ctx.now);
+    return { data, scope: { projectId: p.id, removeTaskIds: [t.id] }, taskId: t.id, changed: ["task"], result: { projectId: p.id, deleted: { id: t.id, title: t.title }, activityId: data.activity[0].id } };
+  }
+};
+var delete_milestone = {
+  kind: "write",
+  description: "Delete a milestone. Only delete what the user asked for. The deleted milestone can be brought back with restore_deleted.",
+  input: {
+    project: { type: "string", min: 1, max: TITLE, description: "Project id or name." },
+    milestone: { type: "string", min: 1, max: TITLE, description: "Milestone id or title." },
+    request_id: REQUEST_ID
+  },
+  run(d, i, ctx) {
+    const p = resolveProject(d, i.project);
+    const m = resolveMilestone(p, i.milestone);
+    let data = deleteMilestone(d, p.id, m.id, ctx.now);
+    data = logActivity(data, { projectId: p.id, kind: "milestone", text: `Deleted milestone: ${clip(m.title, 80)}`, deleted: { type: "milestone", projectId: p.id, item: m } }, ctx.now);
+    return { data, scope: { projectId: p.id, removeMilestoneIds: [m.id] }, changed: ["milestone"], result: { projectId: p.id, deleted: { id: m.id, title: m.title }, activityId: data.activity[0].id } };
+  }
+};
+var TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone, delete_task, delete_milestone };
 var isToolName = (n) => Object.prototype.hasOwnProperty.call(TOOLS, n);
 function parseToolInput(name, raw) {
   return parseInput(TOOLS[name].input, raw);
@@ -1594,7 +1632,7 @@ var SERVER_INSTRUCTIONS = [
   "Compass is the user's personal project portfolio. It is the source of truth; change it only through these tools.",
   "Refer to projects, tasks and milestones by id when you have one. Names work too; if a tool reports AMBIGUOUS_REFERENCE, ask the user which candidate they mean instead of guessing.",
   "Never invent dates. Only pass due/target dates the user stated; a month alone (YYYY-MM) is fine.",
-  "Status, priority and deadlines cannot be changed through this integration. Nothing can be deleted.",
+  "Status, priority and deadlines cannot be changed through this integration. Deleted tasks, milestones and week-plan blocks can be brought back with restore_deleted; only delete what the user asked for, by id.",
   'Some things users call "tasks" are milestones (e.g. a playtesting round). If update_task says a milestone matches, use complete_milestone.',
   "Hobby projects marked lowPressure are never overdue; do not nag about them.",
   "For write tools, pass a short unique request_id so retries are never applied twice.",
@@ -1613,8 +1651,11 @@ var TITLES = {
   update_project: "Update project",
   update_week_plan: "Update week plan",
   create_milestone: "Create milestone",
-  complete_milestone: "Complete milestone"
+  complete_milestone: "Complete milestone",
+  delete_task: "Delete task",
+  delete_milestone: "Delete milestone"
 };
+var DESTRUCTIVE = /* @__PURE__ */ new Set(["delete_task", "delete_milestone", "update_week_plan"]);
 var TOOL_SPECS = Object.keys(TOOLS).map((name) => {
   const t = TOOLS[name];
   const read = t.kind === "read";
@@ -1626,8 +1667,8 @@ var TOOL_SPECS = Object.keys(TOOLS).map((name) => {
     annotations: {
       title: TITLES[name],
       readOnlyHint: read,
-      // No tool deletes or overwrites user data; every write is additive or a scoped update.
-      destructiveHint: false,
+      // Tools that remove things ask the client to confirm; every delete is snapshotted for restore.
+      destructiveHint: DESTRUCTIVE.has(name),
       // Reads are naturally idempotent; writes are via request_id / repeat detection.
       idempotentHint: true,
       // A private, bounded workspace — not the open web.

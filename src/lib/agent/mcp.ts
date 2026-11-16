@@ -12,7 +12,7 @@ export const SERVER_INSTRUCTIONS = [
   "Compass is the user's personal project portfolio. It is the source of truth; change it only through these tools.",
   'Refer to projects, tasks and milestones by id when you have one. Names work too; if a tool reports AMBIGUOUS_REFERENCE, ask the user which candidate they mean instead of guessing.',
   'Never invent dates. Only pass due/target dates the user stated; a month alone (YYYY-MM) is fine.',
-  'Status, priority and deadlines cannot be changed through this integration. Nothing can be deleted.',
+  'Status, priority and deadlines cannot be changed through this integration. Deleted tasks, milestones and week-plan blocks can be brought back with restore_deleted; only delete what the user asked for, by id.',
   'Some things users call "tasks" are milestones (e.g. a playtesting round). If update_task says a milestone matches, use complete_milestone.',
   'Hobby projects marked lowPressure are never overdue; do not nag about them.',
   'For write tools, pass a short unique request_id so retries are never applied twice.',
@@ -33,6 +33,8 @@ const TITLES: Record<ToolName, string> = {
   update_week_plan: 'Update week plan',
   create_milestone: 'Create milestone',
   complete_milestone: 'Complete milestone',
+  delete_task: 'Delete task',
+  delete_milestone: 'Delete milestone',
 };
 
 export interface ToolAnnotations {
@@ -51,6 +53,9 @@ export interface McpToolSpec {
   annotations: ToolAnnotations;
 }
 
+/** Tools that can remove a task, milestone or week-plan block. */
+const DESTRUCTIVE = new Set<ToolName>(['delete_task', 'delete_milestone', 'update_week_plan']);
+
 export const TOOL_SPECS: McpToolSpec[] = (Object.keys(TOOLS) as ToolName[]).map((name) => {
   const t = TOOLS[name];
   const read = t.kind === 'read';
@@ -62,8 +67,8 @@ export const TOOL_SPECS: McpToolSpec[] = (Object.keys(TOOLS) as ToolName[]).map(
     annotations: {
       title: TITLES[name],
       readOnlyHint: read,
-      // No tool deletes or overwrites user data; every write is additive or a scoped update.
-      destructiveHint: false,
+      // Tools that remove things ask the client to confirm; every delete is snapshotted for restore.
+      destructiveHint: DESTRUCTIVE.has(name),
       // Reads are naturally idempotent; writes are via request_id / repeat detection.
       idempotentHint: true,
       // A private, bounded workspace — not the open web.
