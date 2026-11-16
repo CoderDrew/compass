@@ -4,7 +4,7 @@ import { Button, Card, CardHeader, IconButton, PageHeader, StatusDot, cx } from 
 import { BLOCK_KINDS, blockKindLabel, DAYS } from '../data/meta';
 import type { AllocationSuggestion, BlockKind, PlanBlock } from '../data/types';
 import { addDays, formatWeekRange, parseISODate, shiftWeek } from '../lib/dates';
-import { addBlock, getWeek, removeBlock, toggleFocus, updateBlock, updateSettings, updateWeek } from '../lib/ops';
+import { addBlock, duplicateBlock, getWeek, removeBlock, toggleFocus, updateBlock, updateSettings, updateWeek } from '../lib/ops';
 import { capacityState, FOCUS_SOFT_LIMIT, isOpen, sortProjects } from '../lib/selectors';
 import { useProjectMap } from '../state/hooks';
 import { href } from '../state/router';
@@ -292,6 +292,9 @@ function BlockCard({ b, weekStart, projectName, onDrag }: { b: PlanBlock; weekSt
             </a>
           )}
         </div>
+        <IconButton label="Duplicate block" className="!h-5 !w-5 opacity-60 group-hover:opacity-100" onClick={() => apply((d) => duplicateBlock(d, weekStart, b.id), { toast: 'Block duplicated', undoable: true })}>
+          <Copy size={11} />
+        </IconButton>
         <IconButton label="Remove block" className="!h-5 !w-5 opacity-60 group-hover:opacity-100" onClick={() => apply((d) => removeBlock(d, weekStart, b.id), { toast: 'Block removed', undoable: true })}>
           <Trash2 size={11} />
         </IconButton>
