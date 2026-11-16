@@ -467,6 +467,7 @@ function migrate(raw) {
 var isObj = (x) => typeof x === "object" && x !== null && !Array.isArray(x);
 var isStr = (x) => typeof x === "string";
 var optStr = (x) => x === void 0 || isStr(x);
+var validSnapshot = (x) => isObj(x) && isObj(x.item) && isStr(x.item.id) && ((x.type === "task" || x.type === "milestone") && isStr(x.projectId) || x.type === "block" && isStr(x.weekStart));
 var optDue = (x) => x === void 0 || x === "" || isValidDue(x);
 var isDay = (x) => isStr(x) && /^\d{4}-\d{2}-\d{2}$/.test(x);
 function validate(data) {
@@ -511,6 +512,7 @@ function validate(data) {
     if (!optStr(a.projectId) || !optStr(a.taskId) || !optStr(a.opId)) errs.push(`Activity entry #${i + 1} has an invalid reference.`);
     if (a.source !== void 0 && !(isObj(a.source) && a.source.type === "agent" && isStr(a.source.agent) && optStr(a.source.clientId)))
       errs.push(`Activity entry #${i + 1} has an invalid source.`);
+    if (a.deleted !== void 0 && !validSnapshot(a.deleted)) errs.push(`Activity entry #${i + 1} has an invalid deleted snapshot.`);
   });
   if (data.journal !== void 0 && !Array.isArray(data.journal)) errs.push('"journal" must be a list.');
   else
@@ -579,6 +581,14 @@ var same = (a, b) => stableStringify(a) === stableStringify(b);
 var withoutTouch = (p) => ({ ...p, lastActivity: "", updatedAt: "" });
 function checkInvariants(before, after, scope) {
   const problems = [];
+  const snapshots = new Set(
+    after.activity.filter((e) => e.deleted && !before.activity.some((x) => x.id === e.id)).map((e) => `${e.deleted.type}:${e.deleted.item.id}`)
+  );
+  const removalOk = (type, id, allowed) => {
+    if (!allowed?.includes(id)) return false;
+    if (!snapshots.has(`${type}:${id}`)) problems.push(`${type} ${id} must be snapshotted before removal`);
+    return true;
+  };
   for (const k of ["schemaVersion", "seededAt", "settings", "allocations"])
     if (!same(before[k], after[k])) problems.push(`${k} must not change`);
   const afterById = new Map(after.projects.map((p) => [p.id, p]));
@@ -592,9 +602,9 @@ function checkInvariants(before, after, scope) {
     if (b.id === scope.projectId) {
       for (const f of FROZEN_PROJECT_FIELDS) if (!same(b[f], a[f])) problems.push(`${b.name}: ${f} must not change`);
       const tasksAfter = new Set(a.tasks.map((t) => t.id));
-      if (b.tasks.some((t) => !tasksAfter.has(t.id))) problems.push(`${b.name}: tasks must not be removed`);
+      if (b.tasks.some((t) => !tasksAfter.has(t.id) && !removalOk("task", t.id, scope.removeTaskIds))) problems.push(`${b.name}: tasks must not be removed`);
       const msAfter = new Set(a.milestones.map((m) => m.id));
-      if (b.milestones.some((m) => !msAfter.has(m.id))) problems.push(`${b.name}: milestones must not be removed`);
+      if (b.milestones.some((m) => !msAfter.has(m.id) && !removalOk("milestone", m.id, scope.removeMilestoneIds))) problems.push(`${b.name}: milestones must not be removed`);
     } else if (scope.touchProjectIds?.includes(b.id)) {
       if (!same(withoutTouch(b), withoutTouch(a))) problems.push(`${b.name} must not change`);
     } else if (!same(b, a)) {
@@ -606,7 +616,7 @@ function checkInvariants(before, after, scope) {
     else if (k !== scope.weekStart && !same(w, after.weeks[k])) problems.push(`week ${k} must not change`);
     else if (k === scope.weekStart) {
       const ids = new Set(after.weeks[k].blocks.map((x) => x.id));
-      if (w.blocks.some((x) => !ids.has(x.id))) problems.push(`week ${k}: blocks must not be removed`);
+      if (w.blocks.some((x) => !ids.has(x.id) && !removalOk("block", x.id, scope.removeBlockIds))) problems.push(`week ${k}: blocks must not be removed`);
     }
   }
   for (const k of Object.keys(after.weeks)) if (!before.weeks[k] && k !== scope.weekStart) problems.push(`week ${k} must not be created`);
@@ -819,6 +829,9 @@ function updateTask(d, projectId, taskId, patch, now = /* @__PURE__ */ new Date(
   if (completing) next = logActivity(next, { projectId, kind: "task", text: `Finished task: ${trim(merged.title)}` }, now);
   return next;
 }
+function deleteTask(d, projectId, taskId, now = /* @__PURE__ */ new Date()) {
+  return mapProject(d, projectId, (p) => touch({ ...p, tasks: p.tasks.filter((t) => t.id !== taskId) }, now));
+}
 function addMilestone(d, projectId, fields, now = /* @__PURE__ */ new Date()) {
   const m = { id: uid("m"), done: false, ...fields };
   return mapProject(d, projectId, (p) => touch({ ...p, milestones: [...p.milestones, m] }, now));
@@ -836,6 +849,9 @@ function updateMilestone(d, projectId, mId, patch, now = /* @__PURE__ */ new Dat
   let next = mapProject(d, projectId, (x) => touch({ ...x, milestones: x.milestones.map((m) => m.id === mId ? merged : m) }, now));
   if (completing) next = logActivity(next, { projectId, kind: "milestone", text: `Completed milestone: ${trim(merged.title)}` }, now);
   return next;
+}
+function deleteMilestone(d, projectId, mId, now = /* @__PURE__ */ new Date()) {
+  return mapProject(d, projectId, (p) => touch({ ...p, milestones: p.milestones.filter((m) => m.id !== mId) }, now));
 }
 function recordEntry(d, projectId, kind, text, now = /* @__PURE__ */ new Date()) {
   let next = logActivity(d, { projectId, kind, text: text.trim() }, now);
@@ -878,6 +894,9 @@ function toggleFocus(d, weekStart, projectId, now = /* @__PURE__ */ new Date()) 
 }
 function addBlock(d, weekStart, block) {
   return updateWeek(d, weekStart, (w) => ({ ...w, blocks: [...w.blocks, { ...block, id: uid("b") }] }));
+}
+function removeBlock(d, weekStart, id) {
+  return updateWeek(d, weekStart, (w) => ({ ...w, blocks: w.blocks.filter((b) => b.id !== id) }));
 }
 
 // src/lib/selectors.ts
@@ -1271,7 +1290,7 @@ var update_project = {
 };
 var update_week_plan = {
   kind: "write",
-  description: "Change a week's plan: add/remove focus projects, set or append notes, or add planning blocks. Blocks without a day stay unscheduled — Compass never auto-schedules. Existing blocks can't be removed here.",
+  description: "Change a week's plan: add/remove focus projects, set or append notes, add planning blocks, or edit and remove existing blocks by id (ids come from get_week_plan). Blocks without a day stay unscheduled — Compass never auto-schedules. Removed blocks can be brought back with restore_deleted.",
   input: {
     week_start: { type: "monday", optional: true, description: "Monday of the week; defaults to the current week." },
     add_focus: { type: "array", of: { type: "string", min: 1, max: TITLE }, max: 10, optional: true, description: "Project ids or names." },
@@ -1293,10 +1312,34 @@ var update_week_plan = {
         }
       }
     },
+    update_blocks: {
+      type: "array",
+      max: 10,
+      optional: true,
+      of: {
+        type: "object",
+        fields: {
+          id: { type: "string", min: 1, max: 64, description: "Block id from get_week_plan." },
+          title: { type: "string", min: 1, max: TITLE, optional: true },
+          hours: { type: "number", min: 0.25, max: 12, optional: true },
+          day: { type: "number", min: 0, max: 6, integer: true, optional: true, description: "0 = Monday … 6 = Sunday." },
+          unschedule: { type: "boolean", optional: true, description: "true takes the block off its day (unscheduled)." },
+          project: { type: "string", min: 1, max: TITLE, optional: true, nullable: true, description: "Project id or name; null detaches the block from its project." },
+          kind: { type: "enum", values: BLOCK_KINDS.map((b) => b.id), optional: true }
+        }
+      }
+    },
+    remove_blocks: { type: "array", of: { type: "string", min: 1, max: 64 }, max: 10, optional: true, description: "Block ids from get_week_plan." },
     request_id: REQUEST_ID
   },
   run(d, i, ctx) {
     const week = i.week_start ?? currentWeekStart(ctx.timeZone, ctx.now);
+    const removeIds = [...new Set(i.remove_blocks ?? [])];
+    if ((i.update_blocks ?? []).some((u) => removeIds.includes(u.id))) fail("INVALID_INPUT", "A block cannot be both updated and removed in one call.");
+    const updateIds = (i.update_blocks ?? []).map((u) => u.id);
+    if (new Set(updateIds).size !== updateIds.length) fail("INVALID_INPUT", "List each block at most once in update_blocks; combine its changes into one entry.");
+    if ((i.update_blocks ?? []).some((u) => u.day !== void 0 && u.unschedule)) fail("INVALID_INPUT", "Use either day or unschedule for a block, not both.");
+    const findBlock = (id) => getWeek(d, week).blocks.find((b) => b.id === id) ?? fail("NOT_FOUND", `No block "${id}" in the week of ${week}. Use get_week_plan for block ids.`);
     if (i.notes !== void 0 && i.append_notes !== void 0) fail("INVALID_INPUT", "Use either notes or append_notes, not both.");
     let data = d;
     const changed = [];
@@ -1328,8 +1371,27 @@ var update_week_plan = {
       data = logActivity(data, { ...p ? { projectId: p.id } : {}, kind: "focus", text: `Planned ${b.hours}h "${clip(b.title, 60)}" for week of ${week}${b.day === void 0 ? " (unscheduled)" : ""}` }, ctx.now);
       changed.push("block");
     }
+    for (const u of i.update_blocks ?? []) {
+      const b = findBlock(u.id);
+      const p = u.project ? resolveProject(data, u.project) : void 0;
+      const { day: _day, projectId: _pid, ...rest } = b;
+      const day = u.unschedule ? void 0 : u.day ?? b.day;
+      const projectId = u.project === null ? void 0 : p?.id ?? b.projectId;
+      const next = { ...rest, title: u.title ?? b.title, hours: u.hours ?? b.hours, kind: u.kind ?? b.kind, ...projectId ? { projectId } : {}, ...day !== void 0 ? { day } : {} };
+      const diffs = ["title", "hours", "kind", "day", "projectId"].filter((k) => next[k] !== b[k]);
+      if (!diffs.length) continue;
+      data = updateWeek(data, week, (w) => ({ ...w, blocks: w.blocks.map((x) => x.id === b.id ? next : x) }));
+      data = logActivity(data, { ...projectId ? { projectId } : {}, kind: "focus", text: `Changed block "${clip(b.title, 60)}" in week of ${week}: ${diffs.join(", ")}` }, ctx.now);
+      changed.push(`block~${b.id}`);
+    }
+    for (const id of removeIds) {
+      const b = findBlock(id);
+      data = removeBlock(data, week, id);
+      data = logActivity(data, { ...b.projectId ? { projectId: b.projectId } : {}, kind: "focus", text: `Removed block "${clip(b.title, 60)}" from week of ${week}`, deleted: { type: "block", weekStart: week, item: b } }, ctx.now);
+      changed.push(`block-${id}`);
+    }
     if (!changed.length) fail("INVALID_INPUT", `Nothing to change in the week of ${week}.`);
-    return { data, scope: { weekStart: week }, changed, result: { changed, week: weekView(data, getWeek(data, week)) } };
+    return { data, scope: { weekStart: week, ...removeIds.length ? { removeBlockIds: removeIds } : {} }, changed, result: { changed, week: weekView(data, getWeek(data, week)) } };
   }
 };
 var milestoneDto = (m) => ({
@@ -1432,13 +1494,81 @@ var fromToday = (today, n) => {
   const [y, m, dd] = today.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
 };
-var TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone };
+var delete_task = {
+  kind: "write",
+  description: "Delete a task. Only delete what the user asked for. The deleted task can be brought back with restore_deleted.",
+  input: {
+    project: { type: "string", min: 1, max: TITLE, description: "Project id or name." },
+    task: { type: "string", min: 1, max: TITLE, description: "Task id or title." },
+    request_id: REQUEST_ID
+  },
+  run(d, i, ctx) {
+    const p = resolveProject(d, i.project);
+    const t = resolveTask(p, i.task);
+    let data = deleteTask(d, p.id, t.id, ctx.now);
+    data = logActivity(data, { projectId: p.id, kind: "task", text: `Deleted task: ${clip(t.title, 80)}`, deleted: { type: "task", projectId: p.id, item: t } }, ctx.now);
+    return { data, scope: { projectId: p.id, removeTaskIds: [t.id] }, taskId: t.id, changed: ["task"], result: { projectId: p.id, deleted: { id: t.id, title: t.title }, activityId: data.activity[0].id } };
+  }
+};
+var delete_milestone = {
+  kind: "write",
+  description: "Delete a milestone. Only delete what the user asked for. The deleted milestone can be brought back with restore_deleted.",
+  input: {
+    project: { type: "string", min: 1, max: TITLE, description: "Project id or name." },
+    milestone: { type: "string", min: 1, max: TITLE, description: "Milestone id or title." },
+    request_id: REQUEST_ID
+  },
+  run(d, i, ctx) {
+    const p = resolveProject(d, i.project);
+    const m = resolveMilestone(p, i.milestone);
+    let data = deleteMilestone(d, p.id, m.id, ctx.now);
+    data = logActivity(data, { projectId: p.id, kind: "milestone", text: `Deleted milestone: ${clip(m.title, 80)}`, deleted: { type: "milestone", projectId: p.id, item: m } }, ctx.now);
+    return { data, scope: { projectId: p.id, removeMilestoneIds: [m.id] }, changed: ["milestone"], result: { projectId: p.id, deleted: { id: m.id, title: m.title }, activityId: data.activity[0].id } };
+  }
+};
+var restore_deleted = {
+  kind: "write",
+  description: "Bring back a task, milestone or week-plan block an agent deleted, using the activityId from the delete result or get_activity.",
+  input: {
+    activity_id: { type: "string", min: 1, max: 64, description: "Activity entry id of the delete." },
+    request_id: REQUEST_ID
+  },
+  run(d, i, ctx) {
+    const entry = d.activity.find((e) => e.id === i.activity_id);
+    const snap = entry?.deleted ?? fail("NOT_FOUND", `Activity entry "${i.activity_id}" has nothing to restore (no delete snapshot, or it has aged out).`);
+    const exists = () => fail("NOT_ALLOWED", `That ${snap.type} already exists; it was restored already or never removed.`);
+    const newer = d.activity.slice(0, d.activity.indexOf(entry)).find((e) => e.deleted?.type === snap.type && e.deleted.item.id === snap.item.id);
+    if (newer) fail("NOT_ALLOWED", `This ${snap.type} was deleted again later; restore the newer delete "${newer.id}" instead so recent changes aren't lost.`);
+    if (snap.type === "block") {
+      const w = d.weeks[snap.weekStart] ?? fail("NOT_ALLOWED", `The week of ${snap.weekStart} no longer exists, so the block cannot be restored.`);
+      if (w.blocks.some((b) => b.id === snap.item.id)) exists();
+      const { projectId: oldProject, ...rest } = snap.item;
+      const item = oldProject && getProject(d, oldProject) ? snap.item : rest;
+      let data2 = updateWeek(d, snap.weekStart, (x) => ({ ...x, blocks: [...x.blocks, item] }));
+      data2 = logActivity(data2, { ...item.projectId ? { projectId: item.projectId } : {}, kind: "focus", text: `Restored block "${clip(snap.item.title, 60)}" to week of ${snap.weekStart}` }, ctx.now);
+      return { data: data2, scope: { weekStart: snap.weekStart }, changed: ["block"], result: { restored: { type: "block", id: snap.item.id, title: snap.item.title }, weekStart: snap.weekStart } };
+    }
+    const p = getProject(d, snap.projectId) ?? fail("NOT_ALLOWED", `The project this ${snap.type} belonged to no longer exists, so it cannot be restored.`);
+    if (snap.type === "task") {
+      if (p.tasks.some((t) => t.id === snap.item.id)) exists();
+      let data2 = addTask(d, p.id, snap.item, ctx.now);
+      data2 = logActivity(data2, { projectId: p.id, kind: "task", text: `Restored task: ${clip(snap.item.title, 80)}` }, ctx.now);
+      return { data: data2, scope: { projectId: p.id }, taskId: snap.item.id, changed: ["task"], result: { restored: { type: "task", id: snap.item.id, title: snap.item.title }, projectId: p.id } };
+    }
+    if (p.milestones.some((m) => m.id === snap.item.id)) exists();
+    let data = addMilestone(d, p.id, snap.item, ctx.now);
+    data = logActivity(data, { projectId: p.id, kind: "milestone", text: `Restored milestone: ${clip(snap.item.title, 80)}` }, ctx.now);
+    return { data, scope: { projectId: p.id }, changed: ["milestone"], result: { restored: { type: "milestone", id: snap.item.id, title: snap.item.title }, projectId: p.id } };
+  }
+};
+var TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone, delete_task, delete_milestone, restore_deleted };
 var isToolName = (n) => Object.prototype.hasOwnProperty.call(TOOLS, n);
 function parseToolInput(name, raw) {
   return parseInput(TOOLS[name].input, raw);
 }
 
 // src/lib/agent/run.ts
+var NO_HASH_DEDUPE = /* @__PURE__ */ new Set(["delete_task", "delete_milestone", "restore_deleted"]);
 async function runTool(store, name, rawInput, base, opts = {}) {
   let opId;
   try {
@@ -1461,7 +1591,7 @@ async function runTool(store, name, rawInput, base, opts = {}) {
       const tz = [base.timeZone, data.settings.timeZone].find((z) => !!z && isValidTimeZone(z)) ?? "UTC";
       const ctx = { ...base, timeZone: tz, opId: opId ?? "" };
       if (tool.kind === "read") return { ok: true, result: tool.run(data, input, ctx), revision: row.revision };
-      const prior = findPriorOp(data, ctx.opId, base.now);
+      const prior = ctx.opId.startsWith("h:") && NO_HASH_DEDUPE.has(name) ? [] : findPriorOp(data, ctx.opId, base.now);
       if (prior.length)
         return {
           ok: true,
@@ -1584,7 +1714,7 @@ var SERVER_INSTRUCTIONS = [
   "Compass is the user's personal project portfolio. It is the source of truth; change it only through these tools.",
   "Refer to projects, tasks and milestones by id when you have one. Names work too; if a tool reports AMBIGUOUS_REFERENCE, ask the user which candidate they mean instead of guessing.",
   "Never invent dates. Only pass due/target dates the user stated; a month alone (YYYY-MM) is fine.",
-  "Status, priority and deadlines cannot be changed through this integration. Nothing can be deleted.",
+  "Status, priority and deadlines cannot be changed through this integration. Deleted tasks, milestones and week-plan blocks can be brought back with restore_deleted; only delete what the user asked for, by id.",
   'Some things users call "tasks" are milestones (e.g. a playtesting round). If update_task says a milestone matches, use complete_milestone.',
   "Hobby projects marked lowPressure are never overdue; do not nag about them.",
   "For write tools, pass a short unique request_id so retries are never applied twice.",
@@ -1603,8 +1733,12 @@ var TITLES = {
   update_project: "Update project",
   update_week_plan: "Update week plan",
   create_milestone: "Create milestone",
-  complete_milestone: "Complete milestone"
+  complete_milestone: "Complete milestone",
+  delete_task: "Delete task",
+  delete_milestone: "Delete milestone",
+  restore_deleted: "Restore deleted item"
 };
+var DESTRUCTIVE = /* @__PURE__ */ new Set(["delete_task", "delete_milestone", "update_week_plan"]);
 var TOOL_SPECS = Object.keys(TOOLS).map((name) => {
   const t = TOOLS[name];
   const read = t.kind === "read";
@@ -1616,8 +1750,8 @@ var TOOL_SPECS = Object.keys(TOOLS).map((name) => {
     annotations: {
       title: TITLES[name],
       readOnlyHint: read,
-      // No tool deletes or overwrites user data; every write is additive or a scoped update.
-      destructiveHint: false,
+      // Tools that remove things ask the client to confirm; every delete is snapshotted for restore.
+      destructiveHint: DESTRUCTIVE.has(name),
       // Reads are naturally idempotent; writes are via request_id / repeat detection.
       idempotentHint: true,
       // A private, bounded workspace — not the open web.

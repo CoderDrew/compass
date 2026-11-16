@@ -44,6 +44,12 @@ export function migrate(raw: Record<string, unknown>): Record<string, unknown> {
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const isStr = (x: unknown): x is string => typeof x === 'string';
 const optStr = (x: unknown) => x === undefined || isStr(x);
+/** An agent delete snapshot: the removed item plus where it lived. */
+const validSnapshot = (x: unknown) =>
+  isObj(x) &&
+  isObj(x.item) &&
+  isStr(x.item.id) &&
+  (((x.type === 'task' || x.type === 'milestone') && isStr(x.projectId)) || (x.type === 'block' && isStr(x.weekStart)));
 const optDue = (x: unknown) => x === undefined || x === '' || isValidDue(x);
 const isDay = (x: unknown) => isStr(x) && /^\d{4}-\d{2}-\d{2}$/.test(x);
 
@@ -91,6 +97,7 @@ export function validate(data: unknown): string[] {
     if (!optStr(a.projectId) || !optStr(a.taskId) || !optStr(a.opId)) errs.push(`Activity entry #${i + 1} has an invalid reference.`);
     if (a.source !== undefined && !(isObj(a.source) && a.source.type === 'agent' && isStr(a.source.agent) && optStr(a.source.clientId)))
       errs.push(`Activity entry #${i + 1} has an invalid source.`);
+    if (a.deleted !== undefined && !validSnapshot(a.deleted)) errs.push(`Activity entry #${i + 1} has an invalid deleted snapshot.`);
   });
   if (data.journal !== undefined && !Array.isArray(data.journal)) errs.push('"journal" must be a list.');
   else

@@ -1,5 +1,6 @@
 // Post-conditions every agent write must satisfy before it may be committed. These are
-// the server-side guard rails behind the narrow tool contracts: no deletions, no changes
+// the server-side guard rails behind the narrow tool contracts: no deletions except the
+// tasks, milestones and blocks the scope names (each snapshotted for restore), no changes
 // outside the target, no status/priority/deadline edits in the first release. The journal is
 // unchanged unless the tool's scope allows appending agent-written entries; existing entries
 // (including the user's own notes) can never be changed or removed.
@@ -18,6 +19,11 @@ export interface Scope {
   touchProjectIds?: string[];
   /** May append new journal entries (each must be attributed to an agent). */
   journalAppend?: boolean;
+  /** Tasks / milestones (in `projectId`) and blocks (in `weekStart`) this command may remove.
+   *  Each removal also needs a new activity entry carrying its `deleted` snapshot. */
+  removeTaskIds?: string[];
+  removeMilestoneIds?: string[];
+  removeBlockIds?: string[];
 }
 
 /** Fields an agent may never change on any project in this release. */
@@ -28,6 +34,15 @@ const withoutTouch = (p: Project) => ({ ...p, lastActivity: '', updatedAt: '' })
 
 export function checkInvariants(before: AppData, after: AppData, scope: Scope): void {
   const problems: string[] = [];
+  const snapshots = new Set(
+    after.activity.filter((e) => e.deleted && !before.activity.some((x) => x.id === e.id)).map((e) => `${e.deleted!.type}:${e.deleted!.item.id}`),
+  );
+  /** A removal is allowed only when the scope names it and a new entry snapshots it. */
+  const removalOk = (type: 'task' | 'milestone' | 'block', id: string, allowed: string[] | undefined) => {
+    if (!allowed?.includes(id)) return false;
+    if (!snapshots.has(`${type}:${id}`)) problems.push(`${type} ${id} must be snapshotted before removal`);
+    return true;
+  };
 
   for (const k of ['schemaVersion', 'seededAt', 'settings', 'allocations'] as const)
     if (!same(before[k], after[k])) problems.push(`${k} must not change`);
@@ -44,9 +59,9 @@ export function checkInvariants(before: AppData, after: AppData, scope: Scope): 
     if (b.id === scope.projectId) {
       for (const f of FROZEN_PROJECT_FIELDS) if (!same(b[f], a[f])) problems.push(`${b.name}: ${f} must not change`);
       const tasksAfter = new Set(a.tasks.map((t) => t.id));
-      if (b.tasks.some((t) => !tasksAfter.has(t.id))) problems.push(`${b.name}: tasks must not be removed`);
+      if (b.tasks.some((t) => !tasksAfter.has(t.id) && !removalOk('task', t.id, scope.removeTaskIds))) problems.push(`${b.name}: tasks must not be removed`);
       const msAfter = new Set(a.milestones.map((m) => m.id));
-      if (b.milestones.some((m) => !msAfter.has(m.id))) problems.push(`${b.name}: milestones must not be removed`);
+      if (b.milestones.some((m) => !msAfter.has(m.id) && !removalOk('milestone', m.id, scope.removeMilestoneIds))) problems.push(`${b.name}: milestones must not be removed`);
     } else if (scope.touchProjectIds?.includes(b.id)) {
       if (!same(withoutTouch(b), withoutTouch(a))) problems.push(`${b.name} must not change`);
     } else if (!same(b, a)) {
@@ -60,7 +75,7 @@ export function checkInvariants(before: AppData, after: AppData, scope: Scope): 
     else if (k !== scope.weekStart && !same(w, after.weeks[k])) problems.push(`week ${k} must not change`);
     else if (k === scope.weekStart) {
       const ids = new Set(after.weeks[k].blocks.map((x) => x.id));
-      if (w.blocks.some((x) => !ids.has(x.id))) problems.push(`week ${k}: blocks must not be removed`);
+      if (w.blocks.some((x) => !ids.has(x.id) && !removalOk('block', x.id, scope.removeBlockIds))) problems.push(`week ${k}: blocks must not be removed`);
     }
   }
   for (const k of Object.keys(after.weeks)) if (!before.weeks[k] && k !== scope.weekStart) problems.push(`week ${k} must not be created`);

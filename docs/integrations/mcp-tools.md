@@ -1,6 +1,6 @@
 # Compass MCP tools: contracts
 
-Status: **Phase 1 — decisions recorded.** 13 tools (D3 approved; journal tools added in DECISIONS #14). The command layer behind these tools (`src/lib/agent/`) is implemented and tested in Phase 1; the MCP wiring is Phase 3.
+Status: **Phase 1 — decisions recorded.** 16 tools (D3 approved; journal tools added in DECISIONS #14; deletes and restore in #15). The command layer behind these tools (`src/lib/agent/`) is implemented and tested in Phase 1; the MCP wiring is Phase 3.
 
 ## Conventions
 
@@ -8,7 +8,7 @@ Status: **Phase 1 — decisions recorded.** 13 tools (D3 approved; journal tools
 - **Dates.** `YYYY-MM-DD` or month-only `YYYY-MM`, validated with the app's `isValidDue`. Week starts must be a Monday (`YYYY-MM-DD`). Tools never invent a date the user didn't give.
 - **Idempotency.** Each write accepts an optional `request_id` (string ≤ 64). The server derives `opId` = `request_id` or a hash of `(tool, canonical args)` within a 10-minute window. If an activity entry with that `opId` already exists, the tool returns `{ ok: true, duplicate: true, … }` and writes nothing.
 - **Attribution.** Every write adds at least one activity entry with `source: { type: 'agent', agent, clientId }` and `opId`.
-- **Annotations.** Read tools: `readOnlyHint: true, destructiveHint: false, openWorldHint: false`. Write tools: `readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true` (idempotent via `request_id`/op hash).
+- **Annotations.** Read tools: `readOnlyHint: true, destructiveHint: false, openWorldHint: false`. Write tools: `readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true` (idempotent via `request_id`/op hash). `delete_task`, `delete_milestone` and `update_week_plan` (which can remove blocks) have `destructiveHint: true`.
 - **Limits.** Strings: titles ≤ 200 chars, text ≤ 4,000. Unknown fields → `INVALID_INPUT`.
 
 ## Error model
@@ -87,9 +87,9 @@ Effect: `updateProject` / `completeNextAction`; `append_notes` appends a dated p
 Output: `{ ok, project: { id, name, nextAction, … }, changed: string[] }`
 
 ### `update_week_plan`
-Input: `{ week_start?: Monday date, add_focus?: string[], remove_focus?: string[], notes?: string, append_notes?: string, add_blocks?: [{ title, project?, kind?: BlockKind (default 'focus'), hours: 0.25–12, day?: 0–6 }] (≤ 10), request_id? }`
+Input: `{ week_start?: Monday date, add_focus?: string[], remove_focus?: string[], notes?: string, append_notes?: string, add_blocks?: [{ title, project?, kind?: BlockKind (default 'focus'), hours: 0.25–12, day?: 0–6 }] (≤ 10), update_blocks?: [{ id, title?, hours?, day?: 0–6, unschedule?: true, project?: string | null, kind? }] (≤ 10), remove_blocks?: string[] (block ids, ≤ 10), request_id? }`
 Effect: `toggleFocus` (only when the state actually changes), `addBlock`. Blocks without `day` stay **unscheduled** (Compass never auto-schedules). Logs focus changes (existing) and block/notes changes (new entry, `kind: 'focus'`).
-Not allowed: removing or moving existing blocks (no deletion in the first release).
+Block ids come from `get_week_plan`. Edits log "Changed block …"; removals log "Removed block …" with a `deleted` snapshot (restorable). Unknown id → `NOT_FOUND`; the same id in both lists, or `day` with `unschedule` → `INVALID_INPUT`.
 Output: `{ ok, week: <get_week_plan output>, changed: string[] }`
 
 ### `create_milestone`
@@ -102,3 +102,18 @@ Input: `{ project: string, milestone: string, done?: boolean (default true), req
 Effect: `updateMilestone` (sets/clears `completedAt`, logs completion); reopening logs "Reopened milestone: …". Already in the requested state → `INVALID_INPUT`.
 Output: `{ ok, projectId, milestone: { id, title, done, targetDate?, completedAt? } }`
 Note: "Mark the Starfall playtesting task complete" refers to the milestone *Physical playtesting round*; `update_task` reports that a milestone matches, and the agent uses this tool.
+
+### `delete_task`
+Input: `{ project: string, task: string, request_id? }`
+Effect: `deleteTask` + activity entry "Deleted task: …" (`kind: 'task'`) carrying `deleted: { type: 'task', projectId, item }`.
+Output: `{ ok, projectId, deleted: { id, title }, activityId }`
+
+### `delete_milestone`
+Input: `{ project: string, milestone: string, request_id? }`
+Effect: `deleteMilestone` + activity entry "Deleted milestone: …" with a snapshot.
+Output: `{ ok, projectId, deleted: { id, title }, activityId }`
+
+### `restore_deleted`
+Input: `{ activity_id: string, request_id? }`
+Effect: re-inserts the snapshot from that activity entry with its original id and logs "Restored …". No snapshot (or aged out) → `NOT_FOUND`; item already present, or its project/week gone → `NOT_ALLOWED`.
+Output: `{ ok, restored: { type, id, title }, projectId? | weekStart? }`

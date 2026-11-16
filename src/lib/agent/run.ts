@@ -42,6 +42,8 @@ export interface RunOptions {
   maxAttempts?: number;
 }
 
+const NO_HASH_DEDUPE = new Set<string>(['delete_task', 'delete_milestone', 'restore_deleted']);
+
 export async function runTool(
   store: PortfolioStore,
   name: string,
@@ -75,7 +77,10 @@ export async function runTool(
 
       if (tool.kind === 'read') return { ok: true, result: tool.run(data, input as never, ctx), revision: row.revision };
 
-      const prior = findPriorOp(data, ctx.opId, base.now);
+      // Deletes and restores without a request_id skip the 10-minute repeat check: "delete,
+      // undo, delete again" must really delete, and a true repeat fails honestly (NOT_FOUND /
+      // NOT_ALLOWED) instead of reporting a change that didn't happen.
+      const prior = ctx.opId.startsWith('h:') && NO_HASH_DEDUPE.has(name) ? [] : findPriorOp(data, ctx.opId, base.now);
       if (prior.length)
         return {
           ok: true,
