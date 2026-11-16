@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createSeedData } from '../../data/seed';
 import type { AppData } from '../../data/types';
-import { addBlock, addMilestone, addTask, getProject, getWeek } from '../ops';
+import { addBlock, addMilestone, addTask, deleteProject, getProject, getWeek } from '../ops';
 import type { AgentContext } from './attribution';
 import { TOOL_SPECS } from './mcp';
 import { memoryPortfolioStore, runTool } from './run';
@@ -131,5 +131,63 @@ describe('update_week_plan — remove and edit blocks', () => {
       error: { code: 'INVALID_INPUT' },
     });
     expect(store.commits).toHaveLength(0);
+  });
+});
+
+describe('restore_deleted', () => {
+  async function deleted(tool: string, input: Record<string, unknown>, data = seed()) {
+    const store = memoryPortfolioStore(data);
+    const r = await runTool(store, tool, input, base());
+    expect(r.ok).toBe(true);
+    const activityId = dataOf(store).activity.find((e) => e.deleted)!.id;
+    return { store, activityId };
+  }
+
+  it('restores a deleted task with its original id and fields', async () => {
+    const before = seed();
+    const id = taskId(before, 'Write rules draft');
+    const { store, activityId } = await deleted('delete_task', { project: 'starfall', task: 'Write rules draft' }, before);
+    const r = await runTool(store, 'restore_deleted', { activity_id: activityId }, base(new Date(NOW.getTime() + 60_000)));
+    expect(r).toMatchObject({ ok: true, result: { restored: { type: 'task', id, title: 'Write rules draft' }, projectId: 'starfall' } });
+    const d = dataOf(store);
+    expect(getProject(d, 'starfall')!.tasks.find((t) => t.id === id)).toEqual(getProject(before, 'starfall')!.tasks.find((t) => t.id === id));
+    expect(d.activity[0]).toMatchObject({ kind: 'task', text: 'Restored task: Write rules draft', taskId: id, source: { type: 'agent' } });
+  });
+
+  it('restores a milestone and a block', async () => {
+    const m = await deleted('delete_milestone', { project: 'starfall', milestone: 'Second playtest' });
+    expect(await runTool(m.store, 'restore_deleted', { activity_id: m.activityId }, base())).toMatchObject({ ok: true, result: { restored: { type: 'milestone' } } });
+    expect(getProject(dataOf(m.store), 'starfall')!.milestones.some((x) => x.title === 'Second playtest')).toBe(true);
+
+    const s = seed();
+    const bid = blockId(s, 'Deploy Olympus');
+    const b = await deleted('update_week_plan', { week_start: WEEK, remove_blocks: [bid] }, s);
+    expect(await runTool(b.store, 'restore_deleted', { activity_id: b.activityId }, base())).toMatchObject({ ok: true, result: { restored: { type: 'block', id: bid }, weekStart: WEEK } });
+    expect(blocks(dataOf(b.store)).find((x) => x.id === bid)).toMatchObject({ title: 'Deploy Olympus', hours: 2, day: 3 });
+  });
+
+  it('restoring twice is NOT_ALLOWED and does not duplicate the item', async () => {
+    const { store, activityId } = await deleted('delete_task', { project: 'starfall', task: 'Write lore draft' });
+    await runTool(store, 'restore_deleted', { activity_id: activityId, request_id: 'r1' }, base());
+    const again = await runTool(store, 'restore_deleted', { activity_id: activityId, request_id: 'r2' }, base());
+    expect(again).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } });
+    if (!again.ok) expect(again.error.message).toContain('already exists');
+    expect(getProject(dataOf(store), 'starfall')!.tasks.filter((t) => t.title === 'Write lore draft')).toHaveLength(1);
+  });
+
+  it('an activity entry without a snapshot is NOT_FOUND', async () => {
+    const store = memoryPortfolioStore(seed());
+    await runTool(store, 'add_activity', { text: 'Just a note' }, base());
+    const id = dataOf(store).activity[0].id;
+    expect(await runTool(store, 'restore_deleted', { activity_id: id }, base())).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+    expect(await runTool(store, 'restore_deleted', { activity_id: 'a-missing' }, base())).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+  });
+
+  it('restoring into a project deleted since is NOT_ALLOWED and changes nothing', async () => {
+    const { store, activityId } = await deleted('delete_task', { project: 'starfall', task: 'Write lore draft' });
+    store.externalWrite((d) => deleteProject(d, 'starfall', NOW));
+    const commits = store.commits.length;
+    expect(await runTool(store, 'restore_deleted', { activity_id: activityId }, base())).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } });
+    expect(store.commits).toHaveLength(commits);
   });
 });

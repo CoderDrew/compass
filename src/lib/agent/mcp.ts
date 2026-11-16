@@ -35,6 +35,7 @@ const TITLES: Record<ToolName, string> = {
   complete_milestone: 'Complete milestone',
   delete_task: 'Delete task',
   delete_milestone: 'Delete milestone',
+  restore_deleted: 'Restore deleted item',
 };
 
 export interface ToolAnnotations {

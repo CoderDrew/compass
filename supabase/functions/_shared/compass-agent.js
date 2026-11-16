@@ -1524,7 +1524,38 @@ var delete_milestone = {
     return { data, scope: { projectId: p.id, removeMilestoneIds: [m.id] }, changed: ["milestone"], result: { projectId: p.id, deleted: { id: m.id, title: m.title }, activityId: data.activity[0].id } };
   }
 };
-var TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone, delete_task, delete_milestone };
+var restore_deleted = {
+  kind: "write",
+  description: "Bring back a task, milestone or week-plan block an agent deleted, using the activityId from the delete result or get_activity.",
+  input: {
+    activity_id: { type: "string", min: 1, max: 64, description: "Activity entry id of the delete." },
+    request_id: REQUEST_ID
+  },
+  run(d, i, ctx) {
+    const entry = d.activity.find((e) => e.id === i.activity_id);
+    const snap = entry?.deleted ?? fail("NOT_FOUND", `Activity entry "${i.activity_id}" has nothing to restore (no delete snapshot, or it has aged out).`);
+    const exists = () => fail("NOT_ALLOWED", `That ${snap.type} already exists; it was restored already or never removed.`);
+    if (snap.type === "block") {
+      const w = d.weeks[snap.weekStart] ?? fail("NOT_ALLOWED", `The week of ${snap.weekStart} no longer exists, so the block cannot be restored.`);
+      if (w.blocks.some((b) => b.id === snap.item.id)) exists();
+      let data2 = updateWeek(d, snap.weekStart, (x) => ({ ...x, blocks: [...x.blocks, snap.item] }));
+      data2 = logActivity(data2, { ...snap.item.projectId ? { projectId: snap.item.projectId } : {}, kind: "focus", text: `Restored block "${clip(snap.item.title, 60)}" to week of ${snap.weekStart}` }, ctx.now);
+      return { data: data2, scope: { weekStart: snap.weekStart }, changed: ["block"], result: { restored: { type: "block", id: snap.item.id, title: snap.item.title }, weekStart: snap.weekStart } };
+    }
+    const p = getProject(d, snap.projectId) ?? fail("NOT_ALLOWED", `The project this ${snap.type} belonged to no longer exists, so it cannot be restored.`);
+    if (snap.type === "task") {
+      if (p.tasks.some((t) => t.id === snap.item.id)) exists();
+      let data2 = addTask(d, p.id, snap.item, ctx.now);
+      data2 = logActivity(data2, { projectId: p.id, kind: "task", text: `Restored task: ${clip(snap.item.title, 80)}` }, ctx.now);
+      return { data: data2, scope: { projectId: p.id }, taskId: snap.item.id, changed: ["task"], result: { restored: { type: "task", id: snap.item.id, title: snap.item.title }, projectId: p.id } };
+    }
+    if (p.milestones.some((m) => m.id === snap.item.id)) exists();
+    let data = addMilestone(d, p.id, snap.item, ctx.now);
+    data = logActivity(data, { projectId: p.id, kind: "milestone", text: `Restored milestone: ${clip(snap.item.title, 80)}` }, ctx.now);
+    return { data, scope: { projectId: p.id }, changed: ["milestone"], result: { restored: { type: "milestone", id: snap.item.id, title: snap.item.title }, projectId: p.id } };
+  }
+};
+var TOOLS = { list_projects, get_project, get_activity, get_week_plan, get_journal, add_activity, add_journal_summary, create_task, update_task, update_project, update_week_plan, create_milestone, complete_milestone, delete_task, delete_milestone, restore_deleted };
 var isToolName = (n) => Object.prototype.hasOwnProperty.call(TOOLS, n);
 function parseToolInput(name, raw) {
   return parseInput(TOOLS[name].input, raw);
@@ -1697,7 +1728,8 @@ var TITLES = {
   create_milestone: "Create milestone",
   complete_milestone: "Complete milestone",
   delete_task: "Delete task",
-  delete_milestone: "Delete milestone"
+  delete_milestone: "Delete milestone",
+  restore_deleted: "Restore deleted item"
 };
 var DESTRUCTIVE = /* @__PURE__ */ new Set(["delete_task", "delete_milestone", "update_week_plan"]);
 var TOOL_SPECS = Object.keys(TOOLS).map((name) => {
