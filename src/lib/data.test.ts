@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createSeedData } from '../data/seed';
 import { SCHEMA_VERSION } from '../data/types';
 import {
-  addMilestone, addProject, addTask, completeNextAction, deleteProject, getWeek, newProject, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask,
+  addBlock, addMilestone, addProject, addTask, completeNextAction, deleteProject, duplicateBlock, getWeek, newProject, recordEntry, toggleFocus, updateMilestone, updateProject, updateTask,
 } from './ops';
 import {
   BACKUP_KEY, STORAGE_KEY, backupCurrent, exportJSON, loadData, memoryStorage, migrate, parseAppData, saveData, validate,
@@ -129,6 +129,20 @@ describe('project operations', () => {
   it('records notes against a project', () => {
     const d = recordEntry(createSeedData(NOW), 'starfall', 'decision', 'Use d10 pools', NOW);
     expect(d.activity[0]).toMatchObject({ projectId: 'starfall', kind: 'decision', text: 'Use d10 pools' });
+  });
+
+  it('duplicates a week-plan block next to the original with a new id', () => {
+    const week = '2026-11-09';
+    let d = addBlock(createSeedData(NOW), week, { kind: 'focus', title: 'Rules draft', projectId: 'starfall', day: 2, hours: 1.5 });
+    d = addBlock(d, week, { kind: 'session', title: 'Inbox', hours: 0.5 });
+    const [orig, other] = getWeek(d, week).blocks;
+    const blocks = getWeek(duplicateBlock(d, week, orig.id), week).blocks;
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]).toEqual(orig);
+    expect(blocks[1].id).not.toBe(orig.id);
+    expect({ ...blocks[1], id: orig.id }).toEqual(orig);
+    expect(blocks[2]).toEqual(other);
+    expect(duplicateBlock(d, week, 'missing')).toEqual(d);
   });
 });
 

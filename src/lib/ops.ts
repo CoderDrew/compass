@@ -250,6 +250,17 @@ export function addBlock(d: AppData, weekStart: string, block: Omit<PlanBlock, '
   return updateWeek(d, weekStart, (w) => ({ ...w, blocks: [...w.blocks, { ...block, id: uid('b') }] }));
 }
 
+/** Copies a block (same kind, title, project, hours and day) with a new id, placed right after the original. */
+export function duplicateBlock(d: AppData, weekStart: string, id: string): AppData {
+  return updateWeek(d, weekStart, (w) => {
+    const i = w.blocks.findIndex((b) => b.id === id);
+    if (i < 0) return w;
+    const blocks = [...w.blocks];
+    blocks.splice(i + 1, 0, { ...w.blocks[i], id: uid('b') });
+    return { ...w, blocks };
+  });
+}
+
 export function updateBlock(d: AppData, weekStart: string, id: string, patch: Partial<PlanBlock>): AppData {
   return updateWeek(d, weekStart, (w) => ({ ...w, blocks: w.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)) }));
 }
