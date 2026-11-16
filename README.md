@@ -58,8 +58,9 @@ The agent is treated as semi-trusted: it acts for you but can be steered by prom
 - **A kill switch.** AI access is off until you turn it on in *Data & settings → AI assistants*. Disconnecting a client takes effect immediately.
 - **No direct table access for agents.** Row-level security on `compass_data` refuses any token that carries a `client_id`, so an OAuth token cannot use the REST API. Agents reach data only through `SECURITY DEFINER` functions granted to `service_role`, always keyed by the verified user id.
 - **The service-role key stays on the server.** It exists only as an Edge Function secret supplied by Supabase. It is never in the browser, the repo, or a response.
-- **Narrow tools.** No deletion, no bulk operations, no settings, no raw SQL or document access. Inputs are validated against closed schemas, and tools cannot change status, priority or deadlines.
-- **Invariants before every commit.** A write may change only the targeted project and must not remove tasks, milestones or history.
+- **Narrow tools.** No bulk operations, no settings, no raw SQL or document access. Inputs are validated against closed schemas, and tools cannot change status, priority or deadlines.
+- **Recoverable deletes only.** Agents can delete tasks, milestones and week-plan blocks, but every delete saves a snapshot in Activity and `restore_deleted` puts the item back with its original id. The deleting tools are marked destructive, so clients ask for confirmation. Projects, weeks, activity and the journal can't be deleted.
+- **Invariants before every commit.** A write may change only the targeted project or week, may remove only the items the tool named (each with a snapshot), and never removes projects or history.
 - **Safe writes.** Each commit is a revision check plus backup (last 30 kept) plus op-ledger entry in one transaction. A `request_id` makes retries idempotent. Limits: 60 requests and 20 writes per minute, 5 MB document cap.
 - **Attribution.** Every agent change appears in Activity as "via Claude".
 
